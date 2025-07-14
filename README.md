@@ -53,3 +53,9 @@ noauth -h
 
 #### 结果导出功能
 为了方便用户查看和分析测试结果，二次开发添加了将测试结果导出到 Excel 文件的功能。在 GetStart 和 PostStart 函数中，会将每个请求的 URL、响应长度和状态码等信息保存到一个二维数组中，最后使用 github.com/xuri/excelize/v2 库将数据写入 Excel 文件（get_results.xlsx 和 post_results.xlsx）。
+
+# 编译
+go build main.go
+
+# 直接运行
+go run .\main.go -h
