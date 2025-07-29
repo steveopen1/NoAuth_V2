@@ -9,7 +9,6 @@
 | Stars         | ![Stars](https://img.shields.io/github/stars/steveopen1/NoAuth_V2?style=flat-square) |  
 | Forks         | ![Forks](https://img.shields.io/github/forks/steveopen1/NoAuth_V2?style=flat-square) |  
 | Release 版本  | ![Release](https://img.shields.io/github/v/release/steveopen1/NoAuth_V2?style=flat-square) |
-| download      | ![NoAuth_v2.0 Downloads](https://img.shields.io/badge/dynamic/json?label=NoAuth_v2.0%20Downloads&query=assets[?name%3D%27NoAuth_v2.0.zip%27].download_count&url=https%3A%2F%2Fapi.github.com%2Frepos%2Fsteveopen1%2FNoAuth_V2%2Freleases%2Ftags%2FNoAuth_v2.0&style=flat-square)
 | License       | ![License](https://img.shields.io/github/license/steveopen1/NoAuth_V2?style=flat-square) |  
 
 二开内容如下:
