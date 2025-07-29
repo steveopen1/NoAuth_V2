@@ -1,6 +1,16 @@
 # NoAuth_V2-二开版
 <img width="1721" height="580" alt="image" src="https://github.com/user-attachments/assets/7472e26f-1329-463e-ba64-75892c95fc40" />
 
+# NoAuth_V2  
+
+### 仓库统计信息  
+| 指标          | 徽章                                                                 |  
+|---------------|----------------------------------------------------------------------|  
+| Stars         | ![Stars](https://img.shields.io/github/stars/steveopen1/NoAuth_V2?style=flat-square) |  
+| Forks         | ![Forks](https://img.shields.io/github/forks/steveopen1/NoAuth_V2?style=flat-square) |  
+| Release 版本  | ![Release](https://img.shields.io/github/v/release/steveopen1/NoAuth_V2?style=flat-square) |  
+| License       | ![License](https://img.shields.io/github/license/steveopen1/NoAuth_V2?style=flat-square) |  
+
 二开内容如下:
 - 丰富了示例及参数变更为中文
 - 增加导出为xlsx文件，依据目标域名作为输出目录，最终将结果导出为该目录下
