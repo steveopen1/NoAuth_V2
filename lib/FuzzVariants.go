@@ -24,6 +24,11 @@ var (
 func GenerateAllVariants(req *ParsedRequest) []Variant {
 	var variants []Variant
 
+	parsedURL, err := url.Parse(req.URL)
+	if err == nil {
+		variants = append(variants, generateURLPathSuffixes(parsedURL)...)
+	}
+
 	variants = append(variants, generateURLParamVariants(req)...)
 	variants = append(variants, generateJSONVariants(req)...)
 	variants = append(variants, generateFormVariants(req)...)
@@ -102,6 +107,52 @@ func generateURLParamVariants(req *ParsedRequest) []Variant {
 		})
 	}
 
+	variants = append(variants, generateURLPathSuffixes(parsedURL)...)
+
+	return variants
+}
+
+func generateURLPathSuffixes(parsed *url.URL) []Variant {
+	var variants []Variant
+
+	path := parsed.Path
+	if path == "" || path == "/" {
+		return variants
+	}
+
+	suffixes := []string{".json", ".xml", ".html", ".txt", ".yml", ".yaml"}
+	for _, suffix := range suffixes {
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("PathSuffix[%s -> %s%s]", path, path, suffix),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s%s", parsed.Scheme, parsed.Host, path, suffix),
+		})
+	}
+
+	doubleSlash := strings.Replace(path, "//", "/", 1)
+	if doubleSlash != path {
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("DoubleSlash[%s -> %s]", path, doubleSlash),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s", parsed.Scheme, parsed.Host, doubleSlash),
+		})
+	}
+
+	if !strings.HasSuffix(path, "/") {
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("TrailSlash[%s -> %s/]", path, path),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s/", parsed.Scheme, parsed.Host, path),
+		})
+	} else {
+		noTrailSlash := strings.TrimSuffix(path, "/")
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("NoTrailSlash[%s -> %s]", path, noTrailSlash),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s", parsed.Scheme, parsed.Host, noTrailSlash),
+		})
+	}
+
 	return variants
 }
 
@@ -143,6 +194,35 @@ func generateJSONVariants(req *ParsedRequest) []Variant {
 	variants = append(variants, generateJSONArrayWrap(jsonBody)...)
 	variants = append(variants, generateJSONNest(jsonBody)...)
 	variants = append(variants, generateJSONWildcard(jsonBody)...)
+	variants = append(variants, generateJSONUnicode(jsonBody)...)
+
+	return variants
+}
+
+func generateJSONUnicode(body string) []Variant {
+	var variants []Variant
+
+	matches := JSONStringRegex.FindAllStringSubmatch(body, -1)
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		key := match[1]
+		value := match[2]
+
+		for _, uStr := range []string{"\u200b", "\u3000", "\u00a0"} {
+			oldPattern := fmt.Sprintf(`"%s":"%s"`, key, value)
+			newPattern := fmt.Sprintf(`"%s%s":"%s"`, key, uStr, value)
+			if strings.Contains(body, oldPattern) {
+				mutated := strings.Replace(body, oldPattern, newPattern, 1)
+				variants = append(variants, Variant{
+					Name:        fmt.Sprintf("JSONUnicode[%s: key injection %x]", key, []byte(uStr)),
+					Type:        "json",
+					MutatedBody: mutated,
+				})
+			}
+		}
+	}
 
 	return variants
 }
@@ -194,6 +274,16 @@ func generateJSONNest(body string) []Variant {
 				Name:        fmt.Sprintf("JSONNest[%s:%s -> nested]", key, value),
 				Type:        "json",
 				MutatedBody: mutated,
+			})
+		}
+
+		deepPattern := fmt.Sprintf(`"%s":{"%s":{"%s":%s}}`, key, key, key, value)
+		if strings.Contains(body, oldPattern) {
+			mutatedDeep := strings.Replace(body, oldPattern, deepPattern, 1)
+			variants = append(variants, Variant{
+				Name:        fmt.Sprintf("JSONDeepNest[%s:%s -> deep nested]", key, value),
+				Type:        "json",
+				MutatedBody: mutatedDeep,
 			})
 		}
 	}
