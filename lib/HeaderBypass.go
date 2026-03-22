@@ -122,7 +122,7 @@ type testCase struct {
 func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) SheetData {
 	result := SheetData{
 		Name:    "Header/Method 测试",
-		Headers: []string{"绕过技术", "URL", "响应长度", "状态码", "判定"},
+		Headers: []string{"绕过技术", "URL", "响应长度", "状态码", "判定", "复现命令"},
 	}
 
 	fmt.Println(Blue("[+] Header Bypass poc 开始测试"))
@@ -548,12 +548,11 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 			}
 
 			// 提取响应元数据
-			bodySnippet := truncateBody(body, 4096)
-			location := resp.Header.Get("Location")
+			meta := ExtractResponseMeta(resp, body)
 
 			newLen := len(body)
 			newCode := resp.StatusCode
-			classification := ClassifyResult(ctx, newCode, newLen, bodySnippet, location)
+			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -573,6 +572,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 						fmt.Sprintf("%d", newLen),
 						fmt.Sprintf("%d", newCode),
 						classification,
+						buildCurlCommand(tc),
 					})
 				}
 			} else if (newLen != origLen || newCode != origCode) && newCode != 404 {
@@ -586,6 +586,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 						fmt.Sprintf("%d", newLen),
 						fmt.Sprintf("%d", newCode),
 						classification,
+						buildCurlCommand(tc),
 					})
 				}
 			}
@@ -662,9 +663,15 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 
 			if isHit {
 				hitIPs = append(hitIPs, ip)
-				bodySnippet := truncateBody(body, 4096)
-				location := resp.Header.Get("Location")
-				classification := ClassifyResult(ctx, newCode, newLen, bodySnippet, location)
+				ipMeta := ExtractResponseMeta(resp, body)
+				classification := ClassifyResult(ctx, newCode, newLen, ipMeta)
+
+				// 构建 curl（携带所有 IP 伪造头）
+				var curlHeaders []string
+				for _, header := range bypassIPHeaders {
+					curlHeaders = append(curlHeaders, fmt.Sprintf("-H \"%s: %s\"", header, ip))
+				}
+				curlCmd := fmt.Sprintf("curl -k -v %s \"%s\"", strings.Join(curlHeaders, " "), targetURL)
 
 				fmt.Printf(Green("[+] 阶段一命中: %s len=%d code=%d → %s\n"), desc, newLen, newCode, classification)
 				phase1Export = append(phase1Export, []string{
@@ -672,6 +679,7 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 					fmt.Sprintf("%d", newLen),
 					fmt.Sprintf("%d", newCode),
 					classification,
+					curlCmd,
 				})
 			} else if debug == 1 {
 				fmt.Printf("[*] 阶段一无差异 [%d/%d]: %s len=%d code=%d\n",
@@ -822,4 +830,18 @@ func methodNames(cases []testCase) []string {
 		names = append(names, c.method)
 	}
 	return names
+}
+
+// buildCurlCommand 根据 testCase 构建 curl 复现命令
+func buildCurlCommand(tc testCase) string {
+	var parts []string
+	parts = append(parts, "curl -k -v")
+	if tc.method != "GET" && tc.method != "" {
+		parts = append(parts, fmt.Sprintf("-X %s", tc.method))
+	}
+	for k, v := range tc.headers {
+		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, v))
+	}
+	parts = append(parts, fmt.Sprintf("\"%s\"", tc.url))
+	return strings.Join(parts, " ")
 }

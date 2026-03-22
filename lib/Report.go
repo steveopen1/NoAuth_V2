@@ -216,7 +216,9 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 
 			sb.WriteString("\n**复现命令：**\n\n")
 			sb.WriteString("```bash\n")
-			if item.method == "GET" || item.method == "" || !strings.HasPrefix(item.method, "POST") {
+			if item.curlCmd != "" {
+				sb.WriteString(item.curlCmd + "\n")
+			} else if item.method == "GET" || item.method == "" || !strings.HasPrefix(item.method, "POST") {
 				sb.WriteString(fmt.Sprintf("curl -k -v \"%s\"\n", item.url))
 			} else {
 				sb.WriteString(fmt.Sprintf("curl -k -v -X %s \"%s\"\n", item.method, item.url))
@@ -269,6 +271,7 @@ type suspectItem struct {
 	length         string
 	statusCode     string
 	classification string
+	curlCmd        string // 复现命令
 }
 
 // mergeAllData 合并所有 Sheet 数据，并附加来源标记
@@ -283,22 +286,27 @@ func mergeAllData(sheets ...SheetData) []suspectItem {
 			// 根据不同 Sheet 的列结构解析
 			switch sheet.Name {
 			case "GET 测试":
+				// 列: URL, 响应长度, 状态码, 判定, 复现命令
 				if len(row) > 1 { item.length = row[1] }
 				if len(row) > 2 { item.statusCode = row[2] }
 				if len(row) > 3 { item.classification = row[3] }
+				if len(row) > 4 { item.curlCmd = row[4] }
 				item.method = "GET"
 			case "POST 测试":
+				// 列: URL, 响应长度, 状态码, 请求类型, 判定, 复现命令
 				if len(row) > 1 { item.length = row[1] }
 				if len(row) > 2 { item.statusCode = row[2] }
-				if len(row) > 3 { item.method = row[3] } // POST-Form / POST-Json
+				if len(row) > 3 { item.method = row[3] }
 				if len(row) > 4 { item.classification = row[4] }
+				if len(row) > 5 { item.curlCmd = row[5] }
 			case "Header/Method 测试":
-				// 列: 绕过技术, URL, 响应长度, 状态码, 判定
-				if len(row) > 0 { item.method = row[0] } // 绕过技术描述
+				// 列: 绕过技术, URL, 响应长度, 状态码, 判定, 复现命令
+				if len(row) > 0 { item.method = row[0] }
 				if len(row) > 1 { item.url = row[1] }
 				if len(row) > 2 { item.length = row[2] }
 				if len(row) > 3 { item.statusCode = row[3] }
 				if len(row) > 4 { item.classification = row[4] }
+				if len(row) > 5 { item.curlCmd = row[5] }
 			}
 			items = append(items, item)
 		}

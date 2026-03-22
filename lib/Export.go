@@ -84,7 +84,7 @@ func ExportAllToExcel(targetURL string, sheets []SheetData) {
 			}
 		}
 
-		colWidths := []float64{80, 15, 15, 15, 20}
+		colWidths := []float64{80, 15, 15, 15, 20, 100}
 		for ci := 0; ci < len(sheet.Headers) && ci < len(colWidths); ci++ {
 			col, _ := excelize.ColumnNumberToName(ci + 1)
 			f.SetColWidth(sheetName, col, col, colWidths[ci])

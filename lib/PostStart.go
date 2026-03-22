@@ -17,7 +17,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 	result := SheetData{
 		Name:    "POST 测试",
-		Headers: []string{"URL", "响应长度", "状态码", "请求类型", "判定"},
+		Headers: []string{"URL", "响应长度", "状态码", "请求类型", "判定", "复现命令"},
 	}
 
 	fmt.Println(Blue("[+] POST(Form-data 和 Json) poc 开始测试"))
@@ -146,10 +146,8 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			}
 
 			// 提取响应元数据
-			formSnippet := truncateBody(body, 4096)
-			formLocation := resp.Header.Get("Location")
-			jsonSnippet := truncateBody(bodyjson, 4096)
-			jsonLocation := respjson.Header.Get("Location")
+			formMeta := ExtractResponseMeta(resp, body)
+			jsonMeta := ExtractResponseMeta(respjson, bodyjson)
 
 			if strings.Contains(string(body), url+value) {
 				body = []byte(strings.Replace(string(body), url+value, "", 1))
@@ -157,7 +155,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 			len2 := len(body)
 			code := resp.StatusCode
-			formClassify := ClassifyResult(ctxForm, code, len2, formSnippet, formLocation)
+			formClassify := ClassifyResult(ctxForm, code, len2, formMeta)
 
 			if strings.Contains(string(bodyjson), url+value) {
 				bodyjson = []byte(strings.Replace(string(bodyjson), url+value, "", 1))
@@ -165,7 +163,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 			len2json := len(bodyjson)
 			codeJson := respjson.StatusCode
-			jsonClassify := ClassifyResult(ctxJson, codeJson, len2json, jsonSnippet, jsonLocation)
+			jsonClassify := ClassifyResult(ctxJson, codeJson, len2json, jsonMeta)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -180,12 +178,14 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 				key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
+					curlForm := fmt.Sprintf("curl -k -v -X POST -H \"Content-Type: application/x-www-form-urlencoded\" \"%s\"", url+value)
 					exportData = append(exportData, []string{
 						url + value,
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
 						"POST-Form",
 						formClassify,
+						curlForm,
 					})
 				}
 				if len2json != len2 {
@@ -193,12 +193,14 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true
+						curlJson := fmt.Sprintf("curl -k -v -X POST -H \"Content-Type: application/json\" -d '{}' \"%s\"", url+value)
 						exportData = append(exportData, []string{
 							url + value,
 							fmt.Sprintf("%d", len2json),
 							fmt.Sprintf("%d", codeJson),
 							"POST-Json",
 							jsonClassify,
+							curlJson,
 						})
 					}
 				}
@@ -208,12 +210,14 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 					key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 					if !seen[key] {
 						seen[key] = true
+						curlForm := fmt.Sprintf("curl -k -v -X POST -H \"Content-Type: application/x-www-form-urlencoded\" \"%s\"", url+value)
 						exportData = append(exportData, []string{
 							url + value,
 							fmt.Sprintf("%d", len2),
 							fmt.Sprintf("%d", code),
 							"POST-Form",
 							formClassify,
+							curlForm,
 						})
 					}
 				}
@@ -223,12 +227,14 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true
+						curlJson := fmt.Sprintf("curl -k -v -X POST -H \"Content-Type: application/json\" -d '{}' \"%s\"", url+value)
 						exportData = append(exportData, []string{
 							url + value,
 							fmt.Sprintf("%d", len2json),
 							fmt.Sprintf("%d", codeJson),
 							"POST-Json",
 							jsonClassify,
+							curlJson,
 						})
 					}
 				}

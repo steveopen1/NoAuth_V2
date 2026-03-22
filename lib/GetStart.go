@@ -13,7 +13,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	result := SheetData{
 		Name:    "GET 测试",
-		Headers: []string{"URL", "响应长度", "状态码", "判定"},
+		Headers: []string{"URL", "响应长度", "状态码", "判定", "复现命令"},
 	}
 
 	fmt.Println(Blue("[+] GET poc 开始测试"))
@@ -92,8 +92,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 			}
 
 			// 提取响应元数据（在 URL 剥离前，保留原始 body 用于关键词检测）
-			bodySnippet := truncateBody(body, 4096)
-			location := resp.Header.Get("Location")
+			meta := ExtractResponseMeta(resp, body)
 
 			if strings.Contains(string(body), url+value) {
 				body = []byte(strings.Replace(string(body), url+value, "", 1))
@@ -101,7 +100,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 			len2 := len(body)
 			code := resp.StatusCode
-			classification := ClassifyResult(ctx, code, len2, bodySnippet, location)
+			classification := ClassifyResult(ctx, code, len2, meta)
 
 			isHit := (len2 != len1 || code != origCode) && code != 404
 
@@ -123,11 +122,13 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
+					curl := fmt.Sprintf("curl -k -v \"%s\"", url+value)
 					exportData = append(exportData, []string{
 						url + value,
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
 						classification,
+						curl,
 					})
 				}
 			} else if isHit {
@@ -135,11 +136,13 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
+					curl := fmt.Sprintf("curl -k -v \"%s\"", url+value)
 					exportData = append(exportData, []string{
 						url + value,
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
 						classification,
+						curl,
 					})
 				}
 			}
