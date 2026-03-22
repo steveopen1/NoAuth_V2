@@ -19,6 +19,8 @@ var (
 	list    bool
 	proxy   string
 	timeout int
+	r       string
+	m       string
 )
 
 func init() {
@@ -31,6 +33,8 @@ func init() {
 	flag.BoolVar(&list, "list", false, "字典生成模式，用于生成 payload 字典")
 	flag.StringVar(&proxy, "proxy", "", "设置 HTTP 代理（例如 http://127.0.0.1:8080）")
 	flag.IntVar(&timeout, "timeout", 15, "HTTP 请求超时时间（秒）")
+	flag.StringVar(&r, "r", "", "数据包文件路径（支持 RAW HTTP 格式和 cURL 格式）")
+	flag.StringVar(&m, "m", "bypass", "fuzz 模式：bypass(401/403绕过) 或 logic(逻辑漏洞测试)")
 	flag.Usage = usage
 }
 
@@ -38,6 +42,14 @@ func checkFlags() {
 	if list && u != "" {
 		fmt.Println("错误: -list 和 -u 不能同时使用，请选择其中一个。")
 		os.Exit(0)
+	}
+
+	if r != "" {
+		if _, err := os.Stat(r); os.IsNotExist(err) {
+			fmt.Printf("错误: 数据包文件不存在: %s\n", r)
+			os.Exit(0)
+		}
+		return
 	}
 
 	if n == "" || a == "" {
@@ -55,6 +67,11 @@ func checkFlags() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `noauth version: 2.0.0
 用法:  [-unat] [-u 目标URL] [-n 无需鉴权的接口] [-a 需要鉴权的接口] [-t 线程数] [-debug 调试模式] [-h 帮助]
+
+数据包Fuzz模式:
+  noauth -r request.txt
+  noauth -r request.txt -debug 1
+  noauth -r request.txt -t 20
 
 示例:
   noauth -n /login -a /admin/adduser -u http://localhost:8080/
@@ -79,6 +96,11 @@ func main() {
 	}
 
 	checkFlags()
+
+	if r != "" {
+		requestFuzzMode()
+		return
+	}
 
 	if list {
 		lib.Dict(n, a)
@@ -121,17 +143,32 @@ func main() {
 
 	// 生成测试报告
 	meta := lib.ReportMeta{
-		TargetURL:    u,
-		NoAuth:       n,
-		Auth:         a,
-		Threads:      t,
-		Timeout:      timeout,
-		Proxy:        proxy,
-		Debug:        debug,
-		OrigCode:     origCode,
-		OrigLen:      origLen,
-		NoAuthCode:   noauthBaseline.Code,
-		NoAuthLen:    noauthBaseline.Len,
+		TargetURL:  u,
+		NoAuth:     n,
+		Auth:       a,
+		Threads:    t,
+		Timeout:    timeout,
+		Proxy:      proxy,
+		Debug:      debug,
+		OrigCode:   origCode,
+		OrigLen:    origLen,
+		NoAuthCode: noauthBaseline.Code,
+		NoAuthLen:  noauthBaseline.Len,
 	}
 	lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
+}
+
+func requestFuzzMode() {
+	lib.InitHTTPClient(proxy, timeout)
+
+	fmt.Printf(lib.Blue("[+] HTTP 超时: %d 秒 | 并发线程: %d\n"), timeout, t)
+	fmt.Printf(lib.Blue("[+] Fuzz 模式: %s\n"), m)
+	fmt.Printf(lib.Blue("[+] 数据包文件: %s\n"), r)
+
+	fuzzSheet := lib.RequestFuzzStart(r, t, debug, nil)
+
+	filename := lib.ExportSingleSheetToExcel(r, fuzzSheet)
+	if filename != "" {
+		fmt.Printf(lib.Green("[+] 结果已保存: %s\n"), filename)
+	}
 }

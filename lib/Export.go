@@ -124,3 +124,72 @@ func extractDomain(rawURL string) string {
 	}
 	return host
 }
+
+// ExportSingleSheetToExcel 导出单个 Sheet 到 Excel 文件
+func ExportSingleSheetToExcel(fileName string, sheet SheetData) string {
+	if len(sheet.Data) == 0 {
+		fmt.Println(Yellow("[!] 测试结果为空，跳过 Excel 导出"))
+		return ""
+	}
+
+	baseName := filepath.Base(fileName)
+	ext := filepath.Ext(baseName)
+	dir := strings.TrimSuffix(fileName, ext)
+
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sheetName := sheet.Name
+	f.SetSheetName("Sheet1", sheetName)
+
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "#FFFFFF"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4472C4"}, Pattern: 1},
+	})
+
+	bypassStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "#9C0006"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#FFC7CE"}, Pattern: 1},
+	})
+
+	for ci, h := range sheet.Headers {
+		cell, _ := excelize.CoordinatesToCellName(ci+1, 1)
+		f.SetCellValue(sheetName, cell, h)
+		f.SetCellStyle(sheetName, cell, cell, headerStyle)
+	}
+
+	for ri, row := range sheet.Data {
+		isBypass := false
+		for ci, val := range row {
+			cell, _ := excelize.CoordinatesToCellName(ci+1, ri+2)
+			f.SetCellValue(sheetName, cell, val)
+			if IsHighRisk(val) {
+				isBypass = true
+			}
+		}
+		if isBypass {
+			for ci := range row {
+				cell, _ := excelize.CoordinatesToCellName(ci+1, ri+2)
+				f.SetCellStyle(sheetName, cell, cell, bypassStyle)
+			}
+		}
+	}
+
+	colWidths := []float64{80, 15, 15, 15, 20, 100}
+	for ci := 0; ci < len(sheet.Headers) && ci < len(colWidths); ci++ {
+		col, _ := excelize.ColumnNumberToName(ci + 1)
+		f.SetColWidth(sheetName, col, col, colWidths[ci])
+	}
+
+	lastCol, _ := excelize.ColumnNumberToName(len(sheet.Headers))
+	lastRow := len(sheet.Data) + 1
+	f.AutoFilter(sheetName, fmt.Sprintf("A1:%s%d", lastCol, lastRow), nil)
+
+	outputPath := dir + "_fuzz_results.xlsx"
+	if err := f.SaveAs(outputPath); err != nil {
+		fmt.Printf(Red("[-] 保存 Excel 文件失败: %s\n"), err)
+		return ""
+	}
+
+	return outputPath
+}
