@@ -9,11 +9,9 @@ import (
 
 type Variant struct {
 	Name        string
-	Payload     string
 	Type        string
 	MutatedURL  string
 	MutatedBody string
-	Headers     map[string]string
 }
 
 var (
@@ -263,7 +261,7 @@ func generateJSONWildcard(body string) []Variant {
 		key := match[1]
 		value := match[2]
 
-		replacements := []string{"1", "0", "-1", "null", "\"\"", "*"}
+		replacements := []string{"1", "0", "-1"}
 		for _, r := range replacements {
 			oldPattern := fmt.Sprintf(`"%s":%s`, key, value)
 			newPattern := fmt.Sprintf(`"%s":%s`, key, r)
