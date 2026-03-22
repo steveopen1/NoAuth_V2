@@ -101,7 +101,25 @@ func main() {
 	}
 	fmt.Printf(lib.Blue("[+] HTTP 超时: %d 秒 | 并发线程: %d\n"), timeout, t)
 
-	lib.GetStart(u, n, a, t, debug)
-	lib.PostStart(u, n, a, t, debug)
-	lib.HeaderBypassStart(u, n, a, t, debug)
+	// 三阶段测试，收集结果
+	getSheet, origCode, origLen := lib.GetStart(u, n, a, t, debug)
+	postSheet := lib.PostStart(u, n, a, t, debug)
+	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug)
+
+	// 统一导出到一个 Excel（三个 Sheet）
+	lib.ExportAllToExcel(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+
+	// 生成测试报告
+	meta := lib.ReportMeta{
+		TargetURL: u,
+		NoAuth:    n,
+		Auth:      a,
+		Threads:   t,
+		Timeout:   timeout,
+		Proxy:     proxy,
+		Debug:     debug,
+		OrigCode:  origCode,
+		OrigLen:   origLen,
+	}
+	lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
 }

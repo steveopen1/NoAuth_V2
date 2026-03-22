@@ -9,7 +9,12 @@ import (
 	"sync/atomic"
 )
 
-func GetStart(url, noauth, auth string, thread int, debug int) {
+func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, int) {
+
+	result := SheetData{
+		Name:    "GET 测试",
+		Headers: []string{"URL", "响应长度", "状态码", "判定"},
+	}
 
 	fmt.Println(Blue("[+] GET poc 开始测试"))
 
@@ -20,14 +25,14 @@ func GetStart(url, noauth, auth string, thread int, debug int) {
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
-		return
+		return result, 0, 0
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
-		return
+		return result, 0, 0
 	}
 
 	if strings.Contains(string(body), url+auth) {
@@ -123,9 +128,9 @@ func GetStart(url, noauth, auth string, thread int, debug int) {
 
 	wg.Wait()
 
-	// 导出结果到 Excel
-	headers := []string{"URL", "响应长度", "状态码", "判定"}
-	ExportToExcel(url, "get_results.xlsx", headers, exportData)
+	result.Data = exportData
+	result.TotalPayloads = total
+	return result, origCode, len1
 }
 
 // classifyResult 根据响应长度和状态码差异对结果进行初步分类

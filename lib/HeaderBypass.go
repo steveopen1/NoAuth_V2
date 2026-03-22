@@ -73,7 +73,12 @@ type testCase struct {
 }
 
 // HeaderBypassStart 使用 HTTP Header 绕过技术进行测试
-func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
+func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetData {
+	result := SheetData{
+		Name:    "Header/Method 测试",
+		Headers: []string{"绕过技术", "URL", "响应长度", "状态码", "判定"},
+	}
+
 	fmt.Println(Blue("[+] Header Bypass poc 开始测试"))
 
 	if strings.HasSuffix(url, "/") {
@@ -84,7 +89,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
-		return
+		return result
 	}
 	defer resp.Body.Close()
 
@@ -250,8 +255,9 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 
 	wg.Wait()
 
-	headers := []string{"绕过技术", "URL", "响应长度", "状态码", "判定"}
-	ExportToExcel(url, "header_bypass_results.xlsx", headers, exportData)
+	result.Data = exportData
+	result.TotalPayloads = total
+	return result
 }
 
 // discoverAndBuildMethodCases 智能探测 HTTP 方法

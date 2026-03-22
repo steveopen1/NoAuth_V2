@@ -10,7 +10,12 @@ import (
 	"sync/atomic"
 )
 
-func PostStart(url, noauth, auth string, thread int, debug int) {
+func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
+
+	result := SheetData{
+		Name:    "POST 测试",
+		Headers: []string{"URL", "响应长度", "状态码", "请求类型", "判定"},
+	}
 
 	fmt.Println(Blue("[+] POST(Form-data 和 Json) poc 开始测试"))
 
@@ -23,12 +28,12 @@ func PostStart(url, noauth, auth string, thread int, debug int) {
 
 	if errjson != nil {
 		fmt.Printf(Red("[-] POST-Json 请求原始鉴权接口失败: %s\n"), errjson)
-		return
+		return result
 	}
 
 	if err != nil {
 		fmt.Printf(Red("[-] POST 请求原始鉴权接口失败: %s\n"), err)
-		return
+		return result
 	}
 	defer resp.Body.Close()
 	defer respjson.Body.Close()
@@ -37,12 +42,12 @@ func PostStart(url, noauth, auth string, thread int, debug int) {
 	bodyjson, errjson := io.ReadAll(respjson.Body)
 	if errjson != nil {
 		fmt.Printf(Red("[-] 读取 Json 响应体失败: %s\n"), errjson)
-		return
+		return result
 	}
 
 	if err != nil {
 		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
-		return
+		return result
 	}
 
 	if strings.Contains(string(body), url+auth) {
@@ -203,7 +208,7 @@ func PostStart(url, noauth, auth string, thread int, debug int) {
 
 	wg.Wait()
 
-	// 导出结果到 Excel
-	headers := []string{"URL", "响应长度", "状态码", "请求类型", "判定"}
-	ExportToExcel(url, "post_results.xlsx", headers, exportData)
+	result.Data = exportData
+	result.TotalPayloads = total
+	return result
 }
