@@ -1,88 +1,222 @@
-# NoAuth_V2-二开版
+<p align="center">
+  <pre>
+███    ██  ██████   █████  ██    ██ ████████ ██   ██
+████   ██ ██    ██ ██   ██ ██    ██    ██    ██   ██
+██ ██  ██ ██    ██ ███████ ██    ██    ██    ███████
+██  ██ ██ ██    ██ ██   ██ ██    ██    ██    ██   ██
+██   ████  ██████  ██   ██  ██████     ██    ██   ██
+  </pre>
+</p>
 
-# NoAuth_V2
-二开内容如下:
-- 丰富了示例及参数变更为中文
-- 增加导出为xlsx文件，依据目标域名作为输出目录，最终将结果导出为该目录下
-- 新增共享 HTTP 客户端，支持代理、超时配置、跳过 TLS 证书验证
-- 禁止自动跟随重定向（302/301 本身是有意义的鉴权信号）
-- 增加进度显示，实时展示测试进度
-- 增加结果智能判定列（可能绕过、重定向、拒绝访问等）
-- 导出结果自动去重
-- 修复废弃 API 使用（ioutil、rand.Seed）
+<p align="center">
+  <strong>Java 鉴权绕过 Fuzz 测试工具</strong>
+</p>
 
-# NoAuth_V2
-NoAuth 是一款用于动态生成可能绕过 Java 鉴权的 payload 并进行 fuzz 测试的工具，主要用于在代码审计和绕鉴权场景中节省时间
-- 工具原地址
-  https://github.com/wa1ki0g/NoAuth
+<p align="center">
+  <a href="#快速开始">快速开始</a> •
+  <a href="#功能特性">功能特性</a> •
+  <a href="#参数说明">参数说明</a> •
+  <a href="#使用示例">使用示例</a> •
+  <a href="#项目结构">项目结构</a>
+</p>
 
-### 示例用法
-以下是一些使用示例，帮助你更好地理解如何使用这些参数：
+---
 
-### 用法说明
-`Usage:  [-unat] [-u url] [-n interface without authentication] [-a interface An interface that requires authentication] [-t thread] [-debug choose start debug] [-h help]`：此为工具的使用说明，告知用户可以使用的参数选项。各参数含义如下：
+## 简介
 
-### 参数文档
-| 参数 | 类型 | 是否必填 | 默认值 | 描述 |
-| --- | --- | --- | --- | --- |
-| `-u` | 字符串 | 是 | 无 | 目标 URL，必须包含 `http` 或 `https` 协议前缀。 |
-| `-n` | 字符串 | 是 | 无 | 无需鉴权的接口地址，例如 `/login`、`/register` 等。 |
-| `-a` | 字符串 | 是 | 无 | 需要鉴权的接口地址，例如 `/admin/adduser`。 |
-| `-t` | 整数 | 否 | 系统 CPU 核心数 | 线程数量，用于控制并发请求的数量。 |
-| `-debug` | 整数 | 否 | 0 | 开启调试模式。传入 `1` 表示开启，输出所有请求信息。 |
-| `-proxy` | 字符串 | 否 | 无 | 设置 HTTP 代理，例如 `http://127.0.0.1:8080`。 |
-| `-timeout` | 整数 | 否 | 15 | HTTP 请求超时时间（秒）。 |
-| `-list` | 布尔 | 否 | false | 字典生成模式，用于生成 payload 字典文件。 |
-| `-h` | 无 | 否 | 无 | 显示帮助信息。 |
+NoAuth_V2 是一款用于动态生成鉴权绕过 Payload 并进行自动化 Fuzz 测试的安全工具。主要面向 **Java Web 应用**（Spring Security、Shiro、自研过滤器等）的鉴权机制，通过路径操纵、编码混淆、Header 注入等多种技术组合，检测目标接口是否存在未授权访问漏洞。
 
-#### 基本用法
-```bash
-noauth -n /login -a /admin/adduser -u http://localhost:8080/
+适用场景：渗透测试、代码审计、红队评估中的鉴权绕过验证环节。
+
+> 基于 [wa1ki0g/NoAuth](https://github.com/wa1ki0g/NoAuth) 二次开发。
+
+## 功能特性
+
+### 三阶段测试流程
+
+| 阶段 | 方法 | 输出文件 | 说明 |
+|:---:|:---:|:---:|---|
+| 1 | GET | `get_results.xlsx` | 对鉴权接口发送路径变异的 GET 请求 |
+| 2 | POST | `post_results.xlsx` | 同时测试 Form-data 和 JSON 两种 Content-Type |
+| 3 | Header/Method | `header_bypass_results.xlsx` | IP 伪造、路径重写、方法覆盖、智能 HTTP 方法探测 |
+
+### Payload 覆盖范围
+
+**路径操纵 (19 个生成模块)**
+
+| 技术 | 示例 | 对应模块 |
+|---|---|---|
+| 路径穿越 | `..;/`、`../`、`%u002e%u002e/` | Pathtraversal |
+| 分号注入 | `;/`、`/;//`、`;foo=bar/` | Pointgf、GFG、SxS |
+| 点斜线插入 | `./`、`./././...` | Pointg、Pointgten |
+| URL 编码混淆 | `%2e/`、`%2e%2e/`、`%2f` | Twoe、Twote、Zerod |
+| 双重编码 | `%252f`、`%252e%252e%253b/` | DoubleEncode |
+| Unicode 编码 | `%ef%bc%8f`、`%c0%af`、`%u002f` | UnicodeFull |
+| 大小写变异 | `/Admin` → `/aDmin` | Middle |
+| 后缀伪装 | `.js`、`.json`、`;.css`、`.wsdl` | Suffix |
+| 双斜线 | `//` 路径规范化混淆 | Midg |
+| 空格编码 | `%20/` 分隔符混淆 | KG |
+| 查询参数污染 | `?`、`??`、`?debug=1`、`#` | QueryFragment |
+| Tab/Null 注入 | `%09`、`%00`、`%0d%0a` | TabNull |
+| 反斜杠混淆 | `\`、`%5c`、`..\;/` | Backslash |
+
+**Header 绕过**
+
+| 类型 | 数量 | 说明 |
+|---|---|---|
+| IP 伪造头 | 22 种 × 10 IP | X-Forwarded-For、X-Real-IP、True-Client-IP 等 |
+| 路径重写头 | 3 种 | X-Original-URL、X-Rewrite-URL、X-Override-URL |
+| 方法覆盖头 | 3 种 × 5 方法 | X-HTTP-Method-Override 等 |
+| Referer 伪造 | 2 种 | 自身路径 / 根路径 |
+
+**HTTP 方法智能探测**
+
+```
+目标响应 200 → 跳过方法探测（已可访问）
+目标响应 401/403/405/302 → 发送 OPTIONS 请求
+  ├─ Allow 头存在 → 按声明方法精准测试
+  └─ Allow 头缺失 → 回退测试 PUT / PATCH / HEAD
 ```
 
-#### 开启调试模式
+### 工程化能力
+
+- **结果导出** — 自动按目标域名创建目录，导出带格式的 Excel 文件
+- **智能判定** — 自动标记"可能绕过"、"重定向"、"拒绝访问"、"长度差异"
+- **结果去重** — 相同 URL/长度/状态码 的结果自动去重
+- **进度显示** — 实时输出 `[N/Total]` 测试进度
+- **代理支持** — `-proxy` 参数可将流量转发至 Burp Suite
+- **TLS 兼容** — 自动跳过证书验证，支持自签名证书目标
+- **超时控制** — `-timeout` 可配置请求超时，防止挂起
+- **重定向保留** — 不自动跟随 302/301，保留原始鉴权响应
+- **Windows 兼容** — 自动适配 CMD/PowerShell 颜色输出，修复冒号目录问题
+
+## 快速开始
+
+### 编译
+
 ```bash
-noauth -n /login -a /admin/adduser -u http://localhost:8080/ -debug 1
-```
-
-#### 自定义线程数量
-```bash
-noauth -n /login -a /admin/adduser -u http://localhost:8080/ -t 20
-```
-
-#### 使用代理
-```bash
-noauth -n /login -a /admin/adduser -u http://localhost:8080/ -proxy http://127.0.0.1:8080
-```
-
-#### 设置超时时间
-```bash
-noauth -n /login -a /admin/adduser -u http://localhost:8080/ -timeout 30
-```
-
-#### 查看帮助信息
-```bash
-noauth -h
-```
-
-#### 结果导出功能
-测试结果自动导出到 Excel 文件（get_results.xlsx 和 post_results.xlsx）。
-导出目录以目标域名命名，例如目标为 `http://localhost:8080/` 时，结果文件将保存在 `localhost:8080/` 目录下。
-
-Excel 文件包含以下列：
-- **URL**: 测试的完整 URL
-- **响应长度**: 响应体长度
-- **状态码**: HTTP 状态码
-- **请求类型**: GET / POST-Form / POST-Json（POST 结果文件）
-- **判定**: 自动分类结果（可能绕过、重定向、拒绝访问、长度差异大/小等）
-
-# 编译
-```bash
+git clone https://github.com/steveopen1/NoAuth_V2.git
+cd NoAuth_V2
 go mod tidy
 go build -o noauth main.go
 ```
 
-# 直接运行
+### 基本用法
+
 ```bash
-go run main.go -h
+./noauth -n /login -a /admin/adduser -u http://target.com/
 ```
+
+参数含义:
+- `-n` 无需鉴权的接口（作为对照基准）
+- `-a` 需要鉴权的接口（测试目标）
+- `-u` 目标 URL
+
+## 参数说明
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|:---:|:---:|:---:|:---:|---|
+| `-u` | string | 是 | - | 目标 URL，需包含 `http://` 或 `https://` |
+| `-n` | string | 是 | - | 无需鉴权的接口路径，如 `/login` |
+| `-a` | string | 是 | - | 需要鉴权的接口路径，如 `/admin/adduser` |
+| `-t` | int | 否 | CPU 核心数 | 并发线程数 |
+| `-debug` | int | 否 | 0 | 调试模式，`1` 输出所有请求详情 |
+| `-proxy` | string | 否 | - | HTTP 代理地址，如 `http://127.0.0.1:8080` |
+| `-timeout` | int | 否 | 15 | 请求超时（秒） |
+| `-list` | bool | 否 | false | 仅生成 Payload 字典文件，不发送请求 |
+| `-h` | - | 否 | - | 显示帮助信息 |
+
+## 使用示例
+
+```bash
+# 基本测试
+./noauth -n /login -a /admin/adduser -u http://target.com/
+
+# 开启调试模式（输出所有请求）
+./noauth -n /login -a /admin/adduser -u http://target.com/ -debug 1
+
+# 20 线程 + Burp 代理
+./noauth -n /login -a /admin/adduser -u http://target.com/ -t 20 -proxy http://127.0.0.1:8080
+
+# 自定义超时
+./noauth -n /login -a /admin/adduser -u https://target.com/ -timeout 30
+
+# 仅生成 Payload 字典（配合 Burp Intruder 使用）
+./noauth -n /login -a /admin/adduser -list
+```
+
+### 输出结果
+
+测试完成后，在当前目录下生成以目标域名命名的文件夹：
+
+```
+target.com/
+├── get_results.xlsx            # GET 测试结果
+├── post_results.xlsx           # POST 测试结果
+└── header_bypass_results.xlsx  # Header/Method 测试结果
+```
+
+> Windows 环境下端口号中的 `:` 自动替换为 `_`（如 `localhost_8080/`）。
+
+每个 Excel 文件包含以下字段：
+
+| 列 | 说明 |
+|---|---|
+| URL | 完整测试 URL |
+| 响应长度 | 响应体字节数 |
+| 状态码 | HTTP 状态码 |
+| 请求类型 | GET / POST-Form / POST-Json（POST 文件）或绕过技术描述（Header 文件）|
+| 判定 | 可能绕过 / 重定向 / 拒绝访问 / 长度差异大 / 长度差异小 |
+
+## 项目结构
+
+```
+NoAuth_V2/
+├── main.go                  # 入口：参数解析、流程调度
+├── go.mod                   # Go 模块定义
+├── lib/
+│   ├── Color.go             # 终端颜色输出（自动适配 Windows）
+│   ├── color_windows.go     # Windows VT 模式启用
+│   ├── color_unix.go        # Unix 平台兼容
+│   ├── Dict.go              # 字典生成模式
+│   ├── Export.go            # Excel 导出（excelize/v2）
+│   ├── GetStart.go          # GET 测试引擎
+│   ├── PostStart.go         # POST 测试引擎
+│   ├── HeaderBypass.go      # Header/Method 绕过引擎
+│   ├── HttpClient.go        # 共享 HTTP 客户端
+│   └── Logo.go              # Banner
+└── poc/                     # Payload 生成模块（19 个）
+    ├── Summary.go           # 模块编排 + 去重
+    ├── Pathtraversal.go     # 路径穿越
+    ├── Pointg.go            # ./ 插入
+    ├── Pointgf.go           # ;/ 插入
+    ├── Pointgten.go         # 长 ./ 链
+    ├── Suffix.go            # 后缀伪装
+    ├── Middle.go            # 中间编码 + 大小写变异
+    ├── Midg.go              # 双斜线
+    ├── KG.go                # 空格编码
+    ├── GFG.go               # /;// 插入
+    ├── SxS.go               # 分号路径混淆
+    ├── Twoe.go              # %2e/ 编码
+    ├── Twop.go              # 尾部 /.. 追加
+    ├── Twote.go             # %2e%2e/ 编码
+    ├── Zerod.go             # 多编码字符插入
+    ├── QueryFragment.go     # 查询参数/片段污染
+    ├── TabNull.go           # Tab/Null 字节注入
+    ├── Backslash.go         # 反斜杠混淆
+    ├── DoubleEncode.go      # 双重 URL 编码
+    └── UnicodeFull.go       # Unicode 编码绕过
+```
+
+## 环境要求
+
+- Go 1.21+
+- 依赖：`github.com/xuri/excelize/v2`（`go mod tidy` 自动安装）
+
+## 致谢
+
+- 原始项目：[wa1ki0g/NoAuth](https://github.com/wa1ki0g/NoAuth)
+
+## 免责声明
+
+本工具仅供安全研究和授权测试使用。使用者应确保已获得目标系统的合法授权，对未授权系统进行测试属于违法行为。作者不对因使用本工具产生的任何后果承担责任。
