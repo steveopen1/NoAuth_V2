@@ -64,10 +64,16 @@ NoAuth_V2 是一款用于动态生成鉴权绕过 Payload 并进行自动化 Fuz
 
 | 类型 | 数量 | 说明 |
 |---|---|---|
-| IP 伪造头 | 22 种 × 10 IP | X-Forwarded-For、X-Real-IP、True-Client-IP 等 |
+| IP 伪造头 | 22 种 × 22 IP | X-Forwarded-For、X-Real-IP 等，含 IPv6/十六进制/八进制/短形式/scheme 前缀 |
 | 路径重写头 | 3 种 | X-Original-URL、X-Rewrite-URL、X-Override-URL |
 | 方法覆盖头 | 3 种 × 5 方法 | X-HTTP-Method-Override 等 |
 | Referer 伪造 | 2 种 | 自身路径 / 根路径 |
+| Host 头注入 | 3 种 | localhost、127.0.0.1、0.0.0.0 |
+| 协议/端口伪造 | 10 种 | X-Forwarded-Proto、X-Forwarded-Port、X-Forwarded-Scheme |
+| User-Agent 伪装 | 5 种 | Googlebot、Bingbot、Yahoo Slurp、curl、AhrefsBot |
+| 传输编码绕过 | 1 种 | Transfer-Encoding: chunked |
+| Accept 头操纵 | 4 种 | JSON、HTML、XML、通配符 |
+| 多头组合攻击 | 3 种 | 同时注入多个绕过头增加命中率 |
 
 **HTTP 方法智能探测**
 
@@ -75,7 +81,7 @@ NoAuth_V2 是一款用于动态生成鉴权绕过 Payload 并进行自动化 Fuz
 目标响应 200 → 跳过方法探测（已可访问）
 目标响应 401/403/405/302 → 发送 OPTIONS 请求
   ├─ Allow 头存在 → 按声明方法精准测试
-  └─ Allow 头缺失 → 回退测试 PUT / PATCH / HEAD
+  └─ Allow 头缺失 → 回退测试 PUT / PATCH / HEAD / TRACE
 ```
 
 **双基线智能判定引擎**

