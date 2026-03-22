@@ -10,17 +10,6 @@ import (
 	"sync/atomic"
 )
 
-type FuzzResult struct {
-	VariantName    string
-	OrigCode       int
-	OrigLen        int
-	NewCode        int
-	NewLen         int
-	Diff           bool
-	Classification string
-	CurlCmd        string
-}
-
 func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string) SheetData {
 	result := SheetData{
 		Name:    "Request Fuzz 测试",

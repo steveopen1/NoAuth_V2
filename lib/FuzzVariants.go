@@ -16,10 +16,8 @@ type Variant struct {
 	Headers     map[string]string
 }
 
-type VariantGenerator func(req *ParsedRequest) []Variant
-
 var (
-	JSONValueRegex    = regexp.MustCompile(`"([^"]+)":\s*(\d+)`)
+	JSONValueRegex    = regexp.MustCompile(`"([^"]+)":\s*(-?\d+)`)
 	JSONStringRegex   = regexp.MustCompile(`"([^"]+)":\s*"([^"]*)"`)
 	JSONBoolNullRegex = regexp.MustCompile(`"([^"]+)":\s*(true|false|null)`)
 	FormParamRegex    = regexp.MustCompile(`([^=]+)=([^&]*)`)
