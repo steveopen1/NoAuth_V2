@@ -72,7 +72,7 @@ func ExportAllToExcel(targetURL string, sheets []SheetData) {
 			for ci, val := range row {
 				cell, _ := excelize.CoordinatesToCellName(ci+1, ri+2)
 				f.SetCellValue(sheetName, cell, val)
-				if val == "可能绕过" || val == "长度差异大" {
+				if IsHighRisk(val) {
 					isBypass = true
 				}
 			}

@@ -10,15 +10,17 @@ import (
 
 // ReportMeta 测试元信息
 type ReportMeta struct {
-	TargetURL string
-	NoAuth    string
-	Auth      string
-	Threads   int
-	Timeout   int
-	Proxy     string
-	Debug     int
-	OrigCode  int
-	OrigLen   int
+	TargetURL  string
+	NoAuth     string
+	Auth       string
+	Threads    int
+	Timeout    int
+	Proxy      string
+	Debug      int
+	OrigCode   int
+	OrigLen    int
+	NoAuthCode int
+	NoAuthLen  int
 }
 
 // GenerateReport 根据所有测试结果生成 report.md
@@ -44,13 +46,28 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString(fmt.Sprintf("| 目标地址 | `%s` |\n", meta.TargetURL))
 	sb.WriteString(fmt.Sprintf("| 无鉴权接口（基准） | `%s` |\n", meta.NoAuth))
 	sb.WriteString(fmt.Sprintf("| 鉴权接口（目标） | `%s` |\n", meta.Auth))
-	sb.WriteString(fmt.Sprintf("| 原始响应 | code=%d, len=%d |\n", meta.OrigCode, meta.OrigLen))
+	sb.WriteString(fmt.Sprintf("| 鉴权接口原始响应 | code=%d, len=%d |\n", meta.OrigCode, meta.OrigLen))
+	if meta.NoAuthCode > 0 {
+		sb.WriteString(fmt.Sprintf("| 无鉴权接口基准响应 | code=%d, len=%d |\n", meta.NoAuthCode, meta.NoAuthLen))
+	}
 	sb.WriteString(fmt.Sprintf("| 并发线程 | %d |\n", meta.Threads))
 	sb.WriteString(fmt.Sprintf("| 超时时间 | %d 秒 |\n", meta.Timeout))
 	if meta.Proxy != "" {
 		sb.WriteString(fmt.Sprintf("| 代理 | `%s` |\n", meta.Proxy))
 	}
+	sb.WriteString(fmt.Sprintf("| 判定引擎 | 双基线智能判定 v2（比例阈值 + 内容分析 + 置信度） |\n"))
 	sb.WriteString(fmt.Sprintf("| 测试时间 | %s |\n", time.Now().Format("2006-01-02 15:04:05")))
+	sb.WriteString("\n")
+
+	// ======== 判定引擎说明 ========
+	sb.WriteString("### 判定引擎原理\n\n")
+	sb.WriteString("本次测试使用双基线智能判定引擎，核心逻辑如下：\n\n")
+	sb.WriteString("| 置信度 | 判定条件 |\n")
+	sb.WriteString("|:---:|---|\n")
+	sb.WriteString("| **高** | 状态码从拦截变为200 + 响应长度与无鉴权接口相似度>90% + 无登录页特征 |\n")
+	sb.WriteString("| **中** | 状态码变为200 + 相似度>70%，或无鉴权基线不可用 |\n")
+	sb.WriteString("| **低** | 状态码变为200 但响应含登录/错误页面关键词 |\n")
+	sb.WriteString("| 重定向(需关注) | 重定向到非登录路径（可能是绕过后的业务跳转） |\n")
 	sb.WriteString("\n")
 
 	// ======== 测试维度 ========
@@ -88,23 +105,36 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString("## 3. 结果统计\n\n")
 
 	allData := mergeAllData(getSheet, postSheet, headerSheet)
-	stats := countByClassification(allData)
+	stats := countByClassificationPrefix(allData)
 
 	sb.WriteString("| 判定分类 | 数量 | 风险等级 |\n")
 	sb.WriteString("|---|:---:|:---:|\n")
 
 	riskMap := map[string]string{
-		"可能绕过": "**高**",
-		"长度差异大": "**中**",
-		"长度差异小": "低",
-		"重定向":   "信息",
-		"拒绝访问":  "信息",
+		"可能绕过(高)":  "**严重**",
+		"可能绕过(中)":  "**高**",
+		"可能绕过(低)":  "中",
+		"长度差异大(高)": "**高**",
+		"长度差异大(中)": "中",
+		"长度差异小":    "低",
+		"重定向(需关注)": "中",
+		"重定向":      "信息",
+		"拒绝访问(403)": "信息",
+		"拒绝访问(401)": "信息",
 	}
-	order := []string{"可能绕过", "长度差异大", "长度差异小", "重定向", "拒绝访问"}
+	order := []string{
+		"可能绕过(高)", "可能绕过(中)", "可能绕过(低)",
+		"长度差异大(高)", "长度差异大(中)",
+		"重定向(需关注)", "长度差异小", "重定向",
+		"拒绝访问(403)", "拒绝访问(401)",
+	}
 
 	for _, cls := range order {
 		if cnt, ok := stats[cls]; ok {
 			risk := riskMap[cls]
+			if risk == "" {
+				risk = "信息"
+			}
 			sb.WriteString(fmt.Sprintf("| %s | %d | %s |\n", cls, cnt, risk))
 			delete(stats, cls)
 		}
@@ -115,17 +145,25 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString("\n")
 
 	// ======== 可能绕过详情 ========
-	bypasses := filterByClassification(allData, "可能绕过")
-	largeDiff := filterByClassification(allData, "长度差异大")
+	bypasses := filterByClassificationPrefix(allData, "可能绕过")
+	largeDiff := filterByClassificationPrefix(allData, "长度差异大")
+	needAttention := filterByClassificationPrefix(allData, "重定向(需关注")
 	suspects := append(bypasses, largeDiff...)
+	suspects = append(suspects, needAttention...)
 
 	if len(suspects) > 0 {
 		sb.WriteString("## 4. 疑似绕过成功 — 详细分析\n\n")
-		sb.WriteString("> 以下结果的响应特征与原始鉴权接口存在显著差异，可能表示鉴权被绕过。\n")
+		sb.WriteString("> 以下结果按置信度排序，置信度越高越需要优先验证。\n")
 		sb.WriteString("> 需人工验证响应内容是否确实返回了受保护的数据。\n\n")
 
 		for i, item := range suspects {
-			sb.WriteString(fmt.Sprintf("### 4.%d %s\n\n", i+1, item.classification))
+			confidence := ExtractConfidence(item.classification)
+			confidenceTag := ""
+			if confidence != "" {
+				confidenceTag = fmt.Sprintf(" [置信度: %s]", confidence)
+			}
+
+			sb.WriteString(fmt.Sprintf("### 4.%d %s%s\n\n", i+1, item.classification, confidenceTag))
 			sb.WriteString("```\n")
 			sb.WriteString(fmt.Sprintf("请求方法:   %s\n", item.method))
 			sb.WriteString(fmt.Sprintf("完整 URL:   %s\n", item.url))
@@ -134,28 +172,35 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 			sb.WriteString("```\n\n")
 
 			sb.WriteString("**绕过依据：**\n\n")
-			sb.WriteString(fmt.Sprintf("- 原始鉴权接口响应: `code=%d, len=%d`\n", meta.OrigCode, meta.OrigLen))
+			sb.WriteString(fmt.Sprintf("- 鉴权接口原始响应: `code=%d, len=%d`\n", meta.OrigCode, meta.OrigLen))
+			if meta.NoAuthCode > 0 {
+				sb.WriteString(fmt.Sprintf("- 无鉴权接口基准响应: `code=%d, len=%d`\n", meta.NoAuthCode, meta.NoAuthLen))
+			}
 			sb.WriteString(fmt.Sprintf("- 当前 Payload 响应: `code=%s, len=%s`\n", item.statusCode, item.length))
 
-			if item.classification == "可能绕过" {
-				sb.WriteString(fmt.Sprintf("- 原始状态码为 `%d`（鉴权拦截），当前返回 `%s`（正常响应），", meta.OrigCode, item.statusCode))
-				sb.WriteString("表明请求可能绕过了鉴权中间件到达了业务逻辑层\n")
-			} else {
-				sb.WriteString("- 响应长度与原始鉴权接口差异超过 100 字节，可能包含了不同的页面内容\n")
+			baseLabel := ExtractBaseLabel(item.classification)
+			switch {
+			case baseLabel == "可能绕过" && confidence == "高":
+				sb.WriteString("- 状态码从鉴权拦截变为 200，且响应长度与无鉴权接口高度相似（>90%），无登录页面特征\n")
+				sb.WriteString("- **高概率绕过成功，优先验证**\n")
+			case baseLabel == "可能绕过" && confidence == "中":
+				sb.WriteString("- 状态码从鉴权拦截变为 200，响应与无鉴权接口存在一定相似性\n")
+				sb.WriteString("- 建议人工验证响应体内容\n")
+			case baseLabel == "可能绕过" && confidence == "低":
+				sb.WriteString("- 状态码变为 200，但响应体中检测到登录/错误页面关键词\n")
+				sb.WriteString("- 可能是 WAF/中间件返回的自定义 200 错误页，误报概率较高\n")
+			case baseLabel == "长度差异大":
+				sb.WriteString("- 响应长度与鉴权接口存在显著差异（超过比例阈值）\n")
+				if confidence == "高" {
+					sb.WriteString("- 响应长度更接近无鉴权接口，可能返回了真实业务数据\n")
+				}
+			case baseLabel == "重定向(需关注)":
+				sb.WriteString("- 重定向目标不是登录相关路径，可能是绕过后的业务页面跳转\n")
 			}
 
-			sb.WriteString("\n**预期响应特征（供人工比对）：**\n\n")
-			sb.WriteString("```http\n")
-			sb.WriteString(fmt.Sprintf("HTTP/1.1 %s\n", item.statusCode))
-			sb.WriteString(fmt.Sprintf("Content-Length: %s\n", item.length))
-			sb.WriteString("\n")
-			sb.WriteString("// 如果响应体中包含业务数据（如用户信息、管理功能页面），则确认绕过成功\n")
-			sb.WriteString("// 如果响应体为通用错误页或空白页，则为误报\n")
-			sb.WriteString("```\n\n")
-
-			sb.WriteString("**复现命令：**\n\n")
+			sb.WriteString("\n**复现命令：**\n\n")
 			sb.WriteString("```bash\n")
-			if item.method == "GET" || item.method == "" {
+			if item.method == "GET" || item.method == "" || !strings.HasPrefix(item.method, "POST") {
 				sb.WriteString(fmt.Sprintf("curl -k -v \"%s\"\n", item.url))
 			} else {
 				sb.WriteString(fmt.Sprintf("curl -k -v -X %s \"%s\"\n", item.method, item.url))
@@ -170,14 +215,22 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 
 	// ======== 测试结论 ========
 	sb.WriteString("## 5. 测试结论\n\n")
-	if len(bypasses) > 0 {
-		sb.WriteString(fmt.Sprintf("**发现 %d 个高风险疑似绕过结果**，建议：\n\n", len(bypasses)))
-		sb.WriteString("1. 使用 curl 或 Burp Suite 逐一验证上述 URL 的响应内容\n")
+
+	highBypasses := filterByClassificationSuffix(bypasses, "(高)")
+	medBypasses := filterByClassificationSuffix(bypasses, "(中)")
+
+	if len(highBypasses) > 0 {
+		sb.WriteString(fmt.Sprintf("**发现 %d 个高置信度绕过结果**，强烈建议立即验证：\n\n", len(highBypasses)))
+		sb.WriteString("1. 使用 curl 或 Burp Suite 逐一验证响应内容\n")
 		sb.WriteString("2. 确认响应体是否包含受保护的业务数据\n")
 		sb.WriteString("3. 如确认绕过，排查鉴权中间件对路径规范化的处理逻辑\n")
 		sb.WriteString("4. 重点关注 Spring Security 的 `AntPathMatcher` / `PathPattern` 配置差异\n")
-	} else if len(largeDiff) > 0 {
-		sb.WriteString(fmt.Sprintf("未发现确定性绕过，但存在 %d 个响应长度差异较大的结果，建议人工验证。\n", len(largeDiff)))
+		sb.WriteString("5. 检查 Nginx/Apache 反向代理的路径规范化配置是否与后端一致\n")
+	} else if len(medBypasses) > 0 || len(largeDiff) > 0 {
+		total := len(medBypasses) + len(largeDiff)
+		sb.WriteString(fmt.Sprintf("未发现高置信度绕过，但存在 %d 个中等置信度异常结果，建议人工验证。\n", total))
+	} else if len(needAttention) > 0 {
+		sb.WriteString(fmt.Sprintf("存在 %d 个非登录重定向结果，建议检查重定向目标是否为业务页面。\n", len(needAttention)))
 	} else {
 		sb.WriteString("本次测试未发现鉴权绕过漏洞。目标接口的鉴权机制在当前测试覆盖范围内表现正常。\n")
 	}
@@ -237,8 +290,8 @@ func mergeAllData(sheets ...SheetData) []suspectItem {
 	return items
 }
 
-// countByClassification 按判定分类统计
-func countByClassification(items []suspectItem) map[string]int {
+// countByClassificationPrefix 按完整分类标签统计（包含置信度）
+func countByClassificationPrefix(items []suspectItem) map[string]int {
 	stats := make(map[string]int)
 	for _, item := range items {
 		if item.classification != "" {
@@ -248,11 +301,22 @@ func countByClassification(items []suspectItem) map[string]int {
 	return stats
 }
 
-// filterByClassification 筛选特定判定类型
-func filterByClassification(items []suspectItem, classification string) []suspectItem {
+// filterByClassificationPrefix 按前缀筛选判定类型
+func filterByClassificationPrefix(items []suspectItem, prefix string) []suspectItem {
 	var result []suspectItem
 	for _, item := range items {
-		if item.classification == classification {
+		if strings.HasPrefix(item.classification, prefix) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+// filterByClassificationSuffix 按后缀筛选（用于区分置信度）
+func filterByClassificationSuffix(items []suspectItem, suffix string) []suspectItem {
+	var result []suspectItem
+	for _, item := range items {
+		if strings.HasSuffix(item.classification, suffix) {
 			result = append(result, item)
 		}
 	}

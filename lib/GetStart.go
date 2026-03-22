@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 )
 
-func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, int) {
+func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) (SheetData, int, int) {
 
 	result := SheetData{
 		Name:    "GET 测试",
@@ -42,6 +42,12 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 	len1 := len(body)
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
+
+	// 构建双基线判定上下文
+	ctx := ClassifyContext{
+		Auth:   Baseline{Code: origCode, Len: len1},
+		NoAuth: noauthBaseline,
+	}
 
 	list := poc.Summary(noauth, auth)
 	total := len(list)
@@ -83,12 +89,17 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 				return
 			}
 
+			// 提取响应元数据（在 URL 剥离前，保留原始 body 用于关键词检测）
+			bodySnippet := truncateBody(body, 4096)
+			location := resp.Header.Get("Location")
+
 			if strings.Contains(string(body), url+value) {
 				body = []byte(strings.Replace(string(body), url+value, "", 1))
 			}
 
 			len2 := len(body)
 			code := resp.StatusCode
+			classification := ClassifyResult(ctx, code, len2, bodySnippet, location)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -99,7 +110,7 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 			}
 
 			if debug == 1 {
-				fmt.Printf(Green("[+] GET: %s len=%d code=%d\n"), url+value, len2, code)
+				fmt.Printf(Green("[+] GET: %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
@@ -107,11 +118,11 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 						url + value,
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
-						classifyResult(len1, len2, origCode, code),
+						classification,
 					})
 				}
-			} else if len2 != len1 && code != 404 {
-				fmt.Printf(Green("[+] GET: 响应长度不一致 %s len=%d code=%d\n"), url+value, len2, code)
+			} else if (len2 != len1 || code != origCode) && code != 404 {
+				fmt.Printf(Green("[+] GET: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
@@ -119,7 +130,7 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 						url + value,
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
-						classifyResult(len1, len2, origCode, code),
+						classification,
 					})
 				}
 			}
@@ -131,32 +142,4 @@ func GetStart(url, noauth, auth string, thread int, debug int) (SheetData, int, 
 	result.Data = exportData
 	result.TotalPayloads = total
 	return result, origCode, len1
-}
-
-// classifyResult 根据响应长度和状态码差异对结果进行初步分类
-func classifyResult(origLen, newLen, origCode, newCode int) string {
-	// 状态码为 200 且长度与原始不同，可能存在绕过
-	if newCode == 200 && origCode != 200 {
-		return "可能绕过"
-	}
-	// 状态码为 302/301 重定向
-	if newCode == 302 || newCode == 301 {
-		return "重定向"
-	}
-	// 状态码为 403
-	if newCode == 403 {
-		return "拒绝访问"
-	}
-	// 状态码为 200 且长度差异较大
-	if newCode == 200 && origCode == 200 {
-		diff := newLen - origLen
-		if diff < 0 {
-			diff = -diff
-		}
-		if diff > 100 {
-			return "长度差异大"
-		}
-		return "长度差异小"
-	}
-	return fmt.Sprintf("状态码=%d", newCode)
 }

@@ -101,25 +101,37 @@ func main() {
 	}
 	fmt.Printf(lib.Blue("[+] HTTP 超时: %d 秒 | 并发线程: %d\n"), timeout, t)
 
-	// 三阶段测试，收集结果
-	getSheet, origCode, origLen := lib.GetStart(u, n, a, t, debug)
-	postSheet := lib.PostStart(u, n, a, t, debug)
-	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug)
+	// 获取无鉴权接口基准（正向基线，用于双基线判定）
+	baseURL := strings.TrimSuffix(u, "/")
+	noauthBaseline, err := lib.FetchBaseline(baseURL + n)
+	if err != nil {
+		fmt.Printf(lib.Yellow("[!] 获取无鉴权接口基准失败: %s，将使用降级判定模式\n"), err)
+		noauthBaseline = lib.Baseline{}
+	} else {
+		fmt.Printf(lib.Green("[+] 无鉴权接口 %s 基准: code=%d len=%d\n"), baseURL+n, noauthBaseline.Code, noauthBaseline.Len)
+	}
+
+	// 三阶段测试，收集结果（传入 noauth 基线供智能判定引擎使用）
+	getSheet, origCode, origLen := lib.GetStart(u, n, a, t, debug, noauthBaseline)
+	postSheet := lib.PostStart(u, n, a, t, debug, noauthBaseline)
+	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug, noauthBaseline)
 
 	// 统一导出到一个 Excel（三个 Sheet）
 	lib.ExportAllToExcel(u, []lib.SheetData{getSheet, postSheet, headerSheet})
 
 	// 生成测试报告
 	meta := lib.ReportMeta{
-		TargetURL: u,
-		NoAuth:    n,
-		Auth:      a,
-		Threads:   t,
-		Timeout:   timeout,
-		Proxy:     proxy,
-		Debug:     debug,
-		OrigCode:  origCode,
-		OrigLen:   origLen,
+		TargetURL:    u,
+		NoAuth:       n,
+		Auth:         a,
+		Threads:      t,
+		Timeout:      timeout,
+		Proxy:        proxy,
+		Debug:        debug,
+		OrigCode:     origCode,
+		OrigLen:      origLen,
+		NoAuthCode:   noauthBaseline.Code,
+		NoAuthLen:    noauthBaseline.Len,
 	}
 	lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
 }

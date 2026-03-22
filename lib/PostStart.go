@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 )
 
-func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
+func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) SheetData {
 
 	result := SheetData{
 		Name:    "POST 测试",
@@ -64,6 +64,16 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 	lenjson := len(bodyjson)
 	origCodeJson := respjson.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口(POST-Json) %s 的响应长度: len=%d code=%d\n"), url+auth, lenjson, origCodeJson)
+
+	// 构建双基线判定上下文（Form 和 Json 各自有独立的 Auth 基线）
+	ctxForm := ClassifyContext{
+		Auth:   Baseline{Code: origCode, Len: len1},
+		NoAuth: noauthBaseline,
+	}
+	ctxJson := ClassifyContext{
+		Auth:   Baseline{Code: origCodeJson, Len: lenjson},
+		NoAuth: noauthBaseline,
+	}
 
 	list := poc.Summary(noauth, auth)
 	total := len(list)
@@ -123,12 +133,19 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 				return
 			}
 
+			// 提取响应元数据
+			formSnippet := truncateBody(body, 4096)
+			formLocation := resp.Header.Get("Location")
+			jsonSnippet := truncateBody(bodyjson, 4096)
+			jsonLocation := respjson.Header.Get("Location")
+
 			if strings.Contains(string(body), url+value) {
 				body = []byte(strings.Replace(string(body), url+value, "", 1))
 			}
 
 			len2 := len(body)
 			code := resp.StatusCode
+			formClassify := ClassifyResult(ctxForm, code, len2, formSnippet, formLocation)
 
 			if strings.Contains(string(bodyjson), url+value) {
 				bodyjson = []byte(strings.Replace(string(bodyjson), url+value, "", 1))
@@ -136,6 +153,7 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 
 			len2json := len(bodyjson)
 			codeJson := respjson.StatusCode
+			jsonClassify := ClassifyResult(ctxJson, codeJson, len2json, jsonSnippet, jsonLocation)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -146,7 +164,7 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 			}
 
 			if debug == 1 {
-				fmt.Printf(Green("[+] POST-Form: %s len=%d code=%d\n"), url+value, len2, code)
+				fmt.Printf(Green("[+] POST-Form: %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
 				key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
@@ -155,11 +173,11 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 						fmt.Sprintf("%d", len2),
 						fmt.Sprintf("%d", code),
 						"POST-Form",
-						classifyResult(len1, len2, origCode, code),
+						formClassify,
 					})
 				}
 				if len2json != len2 {
-					fmt.Printf(Green("[+] POST-Json: %s len=%d code=%d\n"), url+value, len2json, codeJson)
+					fmt.Printf(Green("[+] POST-Json: %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true
@@ -168,13 +186,13 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 							fmt.Sprintf("%d", len2json),
 							fmt.Sprintf("%d", codeJson),
 							"POST-Json",
-							classifyResult(lenjson, len2json, origCodeJson, codeJson),
+							jsonClassify,
 						})
 					}
 				}
 			} else {
-				if len2 != len1 && code != 404 {
-					fmt.Printf(Green("[+] POST-Form: 响应长度不一致 %s len=%d code=%d\n"), url+value, len2, code)
+				if (len2 != len1 || code != origCode) && code != 404 {
+					fmt.Printf(Green("[+] POST-Form: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
 					key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 					if !seen[key] {
 						seen[key] = true
@@ -183,13 +201,13 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 							fmt.Sprintf("%d", len2),
 							fmt.Sprintf("%d", code),
 							"POST-Form",
-							classifyResult(len1, len2, origCode, code),
+							formClassify,
 						})
 					}
 				}
 
-				if len2json != lenjson && len2json != len2 && codeJson != 404 {
-					fmt.Printf(Green("[+] POST-Json: 响应长度不一致 %s len=%d code=%d\n"), url+value, len2json, codeJson)
+				if (len2json != lenjson || codeJson != origCodeJson) && len2json != len2 && codeJson != 404 {
+					fmt.Printf(Green("[+] POST-Json: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true
@@ -198,7 +216,7 @@ func PostStart(url, noauth, auth string, thread int, debug int) SheetData {
 							fmt.Sprintf("%d", len2json),
 							fmt.Sprintf("%d", codeJson),
 							"POST-Json",
-							classifyResult(lenjson, len2json, origCodeJson, codeJson),
+							jsonClassify,
 						})
 					}
 				}

@@ -73,7 +73,7 @@ type testCase struct {
 }
 
 // HeaderBypassStart 使用 HTTP Header 绕过技术进行测试
-func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetData {
+func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) SheetData {
 	result := SheetData{
 		Name:    "Header/Method 测试",
 		Headers: []string{"绕过技术", "URL", "响应长度", "状态码", "判定"},
@@ -95,11 +95,17 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetDat
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return
+		return result
 	}
 	origLen := len(body)
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应: len=%d code=%d\n"), url+auth, origLen, origCode)
+
+	// 构建双基线判定上下文
+	ctx := ClassifyContext{
+		Auth:   Baseline{Code: origCode, Len: origLen},
+		NoAuth: noauthBaseline,
+	}
 
 	var cases []testCase
 
@@ -213,8 +219,13 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetDat
 				return
 			}
 
+			// 提取响应元数据
+			bodySnippet := truncateBody(body, 4096)
+			location := resp.Header.Get("Location")
+
 			newLen := len(body)
 			newCode := resp.StatusCode
+			classification := ClassifyResult(ctx, newCode, newLen, bodySnippet, location)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -224,7 +235,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetDat
 			}
 
 			if debug == 1 {
-				fmt.Printf(Green("[+] %s: len=%d code=%d\n"), tc.desc, newLen, newCode)
+				fmt.Printf(Green("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
 				key := fmt.Sprintf("%s|%d|%d", tc.desc, newLen, newCode)
 				if !seen[key] {
 					seen[key] = true
@@ -233,11 +244,11 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetDat
 						tc.url,
 						fmt.Sprintf("%d", newLen),
 						fmt.Sprintf("%d", newCode),
-						classifyResult(origLen, newLen, origCode, newCode),
+						classification,
 					})
 				}
 			} else if (newLen != origLen || newCode != origCode) && newCode != 404 {
-				fmt.Printf(Green("[+] %s: len=%d code=%d\n"), tc.desc, newLen, newCode)
+				fmt.Printf(Green("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
 				key := fmt.Sprintf("%s|%d|%d", tc.desc, newLen, newCode)
 				if !seen[key] {
 					seen[key] = true
@@ -246,7 +257,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) SheetDat
 						tc.url,
 						fmt.Sprintf("%d", newLen),
 						fmt.Sprintf("%d", newCode),
-						classifyResult(origLen, newLen, origCode, newCode),
+						classification,
 					})
 				}
 			}
