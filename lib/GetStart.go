@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 )
 
-func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) (SheetData, int, int) {
+func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) (SheetData, int, int, []string) {
 
 	result := SheetData{
 		Name:    "GET 测试",
@@ -25,14 +25,14 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
-		return result, 0, 0
+		return result, 0, 0, nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
-		return result, 0, 0
+		return result, 0, 0, nil
 	}
 
 	if strings.Contains(string(body), url+auth) {
@@ -63,6 +63,8 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 	seen := make(map[string]bool)
 	// 进度计数器
 	var completed int64
+	// 收集命中的 payload 路径（供 POST 阶段复用）
+	hitPayloadSet := make(map[string]bool)
 
 	for _, value := range list {
 		wg.Add(1)
@@ -101,8 +103,15 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 			code := resp.StatusCode
 			classification := ClassifyResult(ctx, code, len2, bodySnippet, location)
 
+			isHit := (len2 != len1 || code != origCode) && code != 404
+
 			mu.Lock()
 			defer mu.Unlock()
+
+			// 记录命中的 payload（无论 debug 模式）
+			if isHit {
+				hitPayloadSet[value] = true
+			}
 
 			// 进度显示（每 50 个或最后一个时打印）
 			if current%50 == 0 || int(current) == total {
@@ -121,7 +130,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 						classification,
 					})
 				}
-			} else if (len2 != len1 || code != origCode) && code != 404 {
+			} else if isHit {
 				fmt.Printf(Green("[+] GET: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
@@ -139,7 +148,15 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	wg.Wait()
 
+	// 提取命中的 payload 列表
+	var hitPayloads []string
+	for v := range hitPayloadSet {
+		hitPayloads = append(hitPayloads, v)
+	}
+
+	fmt.Printf(Blue("[+] GET 阶段完成: %d 个 payload 中 %d 个命中\n"), total, len(hitPayloads))
+
 	result.Data = exportData
 	result.TotalPayloads = total
-	return result, origCode, len1
+	return result, origCode, len1, hitPayloads
 }

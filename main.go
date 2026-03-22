@@ -112,8 +112,8 @@ func main() {
 	}
 
 	// 三阶段测试，收集结果（传入 noauth 基线供智能判定引擎使用）
-	getSheet, origCode, origLen := lib.GetStart(u, n, a, t, debug, noauthBaseline)
-	postSheet := lib.PostStart(u, n, a, t, debug, noauthBaseline)
+	getSheet, origCode, origLen, getHitPayloads := lib.GetStart(u, n, a, t, debug, noauthBaseline)
+	postSheet := lib.PostStart(u, n, a, t, debug, noauthBaseline, getHitPayloads)
 	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug, noauthBaseline)
 
 	// 统一导出到一个 Excel（三个 Sheet）
