@@ -151,22 +151,32 @@ go build -o noauth main.go
 
 ```
 target.com/
-├── get_results.xlsx            # GET 测试结果
-├── post_results.xlsx           # POST 测试结果
-└── header_bypass_results.xlsx  # Header/Method 测试结果
+├── results.xlsx    # 测试结果（含三个 Sheet）
+└── report.md       # 测试报告
 ```
 
 > Windows 环境下端口号中的 `:` 自动替换为 `_`（如 `localhost_8080/`）。
 
-每个 Excel 文件包含以下字段：
+**results.xlsx** 包含三个 Sheet：
 
-| 列 | 说明 |
+| Sheet | 内容 | 列 |
+|---|---|---|
+| GET 测试 | GET 路径 Fuzz 结果 | URL, 响应长度, 状态码, 判定 |
+| POST 测试 | POST Form+JSON Fuzz 结果 | URL, 响应长度, 状态码, 请求类型, 判定 |
+| Header/Method 测试 | Header 绕过 + 方法探测结果 | 绕过技术, URL, 响应长度, 状态码, 判定 |
+
+- "可能绕过" 和 "长度差异大" 行自动红色高亮
+- 每个 Sheet 支持自动筛选
+
+**report.md** 测试报告包含：
+
+| 章节 | 内容 |
 |---|---|
-| URL | 完整测试 URL |
-| 响应长度 | 响应体字节数 |
-| 状态码 | HTTP 状态码 |
-| 请求类型 | GET / POST-Form / POST-Json（POST 文件）或绕过技术描述（Header 文件）|
-| 判定 | 可能绕过 / 重定向 / 拒绝访问 / 长度差异大 / 长度差异小 |
+| 测试概要 | 目标地址、接口路径、原始响应基准、测试参数 |
+| 测试维度 | 三阶段覆盖的技术列表和 Payload 数量统计 |
+| 结果统计 | 按判定分类汇总 + 风险等级标注 |
+| 疑似绕过详情 | 每个疑似绕过的 URL、方法、响应特征、绕过依据分析、curl 复现命令 |
+| 测试结论 | 综合评估 + 后续建议 |
 
 ## 项目结构
 
@@ -179,7 +189,8 @@ NoAuth_V2/
 │   ├── color_windows.go     # Windows VT 模式启用
 │   ├── color_unix.go        # Unix 平台兼容
 │   ├── Dict.go              # 字典生成模式
-│   ├── Export.go            # Excel 导出（excelize/v2）
+│   ├── Export.go            # Excel 统一导出（三 Sheet 合一）
+│   ├── Report.go            # report.md 报告生成
 │   ├── GetStart.go          # GET 测试引擎
 │   ├── PostStart.go         # POST 测试引擎
 │   ├── HeaderBypass.go      # Header/Method 绕过引擎
