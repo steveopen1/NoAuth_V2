@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"noauth/poc"
 	"strings"
 	"sync"
@@ -110,8 +111,26 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			resp, err := HttpClient.Post(url+value, "application/x-www-form-urlencoded", bytes.NewBuffer([]byte{}))
-			respjson, errjson := HttpClient.Post(url+value, "application/json", bytes.NewBuffer([]byte("{}")))
+			reqForm, err := http.NewRequest("POST", url+value, bytes.NewBuffer([]byte{}))
+			if err != nil {
+				return
+			}
+			reqForm.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			reqForm.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewBuffer([]byte{})), nil
+			}
+
+			reqJson, err := http.NewRequest("POST", url+value, bytes.NewBuffer([]byte("{}")))
+			if err != nil {
+				return
+			}
+			reqJson.Header.Set("Content-Type", "application/json")
+			reqJson.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewBuffer([]byte("{}"))), nil
+			}
+
+			resp, err := DoWithRetry(reqForm)
+			respjson, errjson := DoWithRetry(reqJson)
 
 			current := atomic.AddInt64(&completed, 1)
 
@@ -129,13 +148,16 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 					fmt.Printf(Yellow("[!] POST-Json 请求失败 [%d/%d] %s: %s\n"), current, total, url+value, errjson)
 					mu.Unlock()
 				}
+				if resp != nil {
+					resp.Body.Close()
+				}
 				return
 			}
 			defer respjson.Body.Close()
 			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
-			bodyjson, errjson := io.ReadAll(respjson.Body)
+			body, err := LimitedReadAll(resp.Body)
+			bodyjson, errjson := LimitedReadAll(respjson.Body)
 
 			if err != nil {
 				return

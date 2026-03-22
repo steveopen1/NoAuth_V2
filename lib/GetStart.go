@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"noauth/poc"
 	"strings"
 	"sync"
@@ -74,7 +75,11 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			resp, err := HttpClient.Get(url + value)
+			req, err := http.NewRequest("GET", url+value, nil)
+			if err != nil {
+				return
+			}
+			resp, err := DoWithRetry(req)
 			current := atomic.AddInt64(&completed, 1)
 			if err != nil {
 				if debug == 1 {
@@ -86,7 +91,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 			}
 			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
+			body, err := LimitedReadAll(resp.Body)
 			if err != nil {
 				return
 			}

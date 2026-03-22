@@ -530,7 +530,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 				req.Header.Set(k, v)
 			}
 
-			resp, err := HttpClient.Do(req)
+			resp, err := DoWithRetry(req)
 			current := atomic.AddInt64(&completed, 1)
 			if err != nil {
 				if debug == 1 {
@@ -542,7 +542,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 			}
 			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
+			body, err := LimitedReadAll(resp.Body)
 			if err != nil {
 				return
 			}
@@ -636,7 +636,7 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 				req.Header.Set(header, ip)
 			}
 
-			resp, err := HttpClient.Do(req)
+			resp, err := DoWithRetry(req)
 			current := atomic.AddInt64(&phase1Count, 1)
 			if err != nil {
 				if debug == 1 {
@@ -648,7 +648,7 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 			}
 			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
+			body, err := LimitedReadAll(resp.Body)
 			if err != nil {
 				return
 			}
@@ -737,7 +737,7 @@ func discoverAndBuildMethodCases(targetURL string, origLen, origCode, debug int)
 		return cases
 	}
 
-	resp, err := HttpClient.Do(req)
+	resp, err := DoWithRetry(req)
 	if err != nil {
 		if debug == 1 {
 			fmt.Printf(Yellow("[!] OPTIONS 请求失败: %s\n"), err)
