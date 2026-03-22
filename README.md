@@ -42,38 +42,45 @@ NoAuth_V2 是一款用于动态生成鉴权绕过 Payload 并进行自动化 Fuz
 
 ### Payload 覆盖范围
 
-**路径操纵 (19 个生成模块)**
+**路径操纵 (25 个生成模块)**
 
 | 技术 | 示例 | 对应模块 |
 |---|---|---|
 | 路径穿越 | `..;/`、`../`、`%u002e%u002e/` | Pathtraversal |
 | 分号注入 | `;/`、`/;//`、`;foo=bar/` | Pointgf、GFG、SxS |
+| 分号+Tab穿越 | `/;%09..;/`、`;%09`、`;a=1` | SemiTabTraversal |
 | 点斜线插入 | `./`、`./././...` | Pointg、Pointgten |
 | URL 编码混淆 | `%2e/`、`%2e%2e/`、`%2f` | Twoe、Twote、Zerod |
 | 双重编码 | `%252f`、`%252e%252e%253b/` | DoubleEncode |
 | Unicode 编码 | `%ef%bc%8f`、`%c0%af`、`%u002f` | UnicodeFull |
-| 大小写变异 | `/Admin` → `/aDmin` | Middle |
+| 大小写变异 | 全大写/交替/首字母/末段变异 | Middle、PathCase |
 | 后缀伪装 | `.js`、`.json`、`;.css`、`.wsdl` | Suffix |
 | 双斜线 | `//` 路径规范化混淆 | Midg |
 | 空格编码 | `%20/` 分隔符混淆 | KG |
 | 查询参数污染 | `?`、`??`、`?debug=1`、`#` | QueryFragment |
 | Tab/Null 注入 | `%09`、`%00`、`%0d%0a` | TabNull |
 | 反斜杠混淆 | `\`、`%5c`、`..\;/` | Backslash |
+| CRLF 注入 | `%0d%0a`、Unicode CRLF 变体 | CRLFInjection |
+| 路径末尾变异 | `/.`、`/..`、`%00`、`;/`、`/*` | EndPaths |
+| 路径中间注入 | `/../`、`/.;/`、`/%00/`、`/%09/` | MidPaths |
 
 **Header 绕过**
 
 | 类型 | 数量 | 说明 |
 |---|---|---|
-| IP 伪造头 | 22 种 × 22 IP | X-Forwarded-For、X-Real-IP 等，含 IPv6/十六进制/八进制/短形式/scheme 前缀 |
-| 路径重写头 | 3 种 | X-Original-URL、X-Rewrite-URL、X-Override-URL |
+| IP 伪造头 | 40+ 种 × 22 IP | X-Forwarded-For、X-Real-IP、Base-Url、Proxy-Host 等，含 IPv6/十六进制/八进制/短形式/scheme 前缀 |
+| 路径重写头 | 5 种 | X-Original-URL、X-Rewrite-URL、X-Override-URL、X-Accel-Redirect、X-Forwarded-Path |
 | 方法覆盖头 | 3 种 × 5 方法 | X-HTTP-Method-Override 等 |
+| Verb-Case 切换 | 6 种 | gEt、GeT、GEt、gET 等大小写变体 |
 | Referer 伪造 | 2 种 | 自身路径 / 根路径 |
-| Host 头注入 | 3 种 | localhost、127.0.0.1、0.0.0.0 |
+| Host 头注入 | 8 种 | localhost、127.0.0.1、0.0.0.0、k8s Service Host |
 | 协议/端口伪造 | 10 种 | X-Forwarded-Proto、X-Forwarded-Port、X-Forwarded-Scheme |
 | User-Agent 伪装 | 5 种 | Googlebot、Bingbot、Yahoo Slurp、curl、AhrefsBot |
 | 传输编码绕过 | 1 种 | Transfer-Encoding: chunked |
 | Accept 头操纵 | 4 种 | JSON、HTML、XML、通配符 |
-| 多头组合攻击 | 3 种 | 同时注入多个绕过头增加命中率 |
+| HTTP/1.0 降级 | 1 种 | Via: 1.0 模拟协议降级 |
+| Nginx 内部重定向 | 2 种 | X-Accel-Redirect 绕过前端 ACL |
+| 多头组合攻击 | 6 种 | 同时注入多个绕过头（最多 8 头并发注入） |
 
 **HTTP 方法智能探测**
 
@@ -224,7 +231,7 @@ NoAuth_V2/
 │   ├── HeaderBypass.go      # Header/Method 绕过引擎
 │   ├── HttpClient.go        # 共享 HTTP 客户端
 │   └── Logo.go              # Banner
-└── poc/                     # Payload 生成模块（19 个）
+└── poc/                     # Payload 生成模块（25 个）
     ├── Summary.go           # 模块编排 + 去重
     ├── Pathtraversal.go     # 路径穿越
     ├── Pointg.go            # ./ 插入
@@ -244,7 +251,12 @@ NoAuth_V2/
     ├── TabNull.go           # Tab/Null 字节注入
     ├── Backslash.go         # 反斜杠混淆
     ├── DoubleEncode.go      # 双重 URL 编码
-    └── UnicodeFull.go       # Unicode 编码绕过
+    ├── UnicodeFull.go       # Unicode 编码绕过
+    ├── SemiTabTraversal.go  # ;%09..;/ 穿越模式
+    ├── PathCase.go          # 路径大小写系统变异
+    ├── CRLFInjection.go     # CRLF 注入
+    ├── EndPaths.go          # 路径末尾变异
+    └── MidPaths.go          # 路径中间注入
 ```
 
 ## 环境要求
