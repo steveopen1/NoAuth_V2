@@ -27,11 +27,76 @@ func GenerateAllVariants(req *ParsedRequest) []Variant {
 	parsedURL, err := url.Parse(req.URL)
 	if err == nil {
 		variants = append(variants, generateURLPathSuffixes(parsedURL)...)
+		variants = append(variants, generateURLPathFuzz(parsedURL)...)
 	}
 
 	variants = append(variants, generateURLParamVariants(req)...)
 	variants = append(variants, generateJSONVariants(req)...)
 	variants = append(variants, generateFormVariants(req)...)
+
+	return variants
+}
+
+var httpMethods = []string{
+	"GET", "POST", "PUT", "DELETE", "PATCH",
+	"HEAD", "OPTIONS", "TRACE", "CONNECT",
+	"PUT", "COPY", "MOVE", "MKCOL", "PROPFIND", "PROPPATCH", "LOCK", "UNLOCK",
+	"VIEW", "HEAD", "LINK", "UNLINK", "CONNECT",
+	"TRACE", "TRACK", "DEBUG",
+}
+
+func generateURLPathFuzz(parsed *url.URL) []Variant {
+	var variants []Variant
+
+	path := parsed.Path
+	if path == "" || path == "/" {
+		return variants
+	}
+
+	basePath := path
+	lastSlash := strings.LastIndex(path, "/")
+	if lastSlash > 0 {
+		basePath = path[:lastSlash]
+	}
+
+	midPaths := []string{
+		";", ";.", "..;", "../..", "../../", "../../..",
+		"./", "./..", "/.", "/..", "//", "////",
+		"%20", "%09", "%0a", "%0d", "%00", "%ff",
+		"%2e", "%2e%2e", "%2f", "%2f%2f",
+		"~", "`", "\\", "\n", "\r",
+		";vulnerable", ";x", ";test",
+		"/.;/", "/..;/", "/../;", "/..%00",
+		"/%2e/", "/%2e%2e/", "/%2f",
+		"/randomstring", "/.randomstring",
+		"/.././../", "/;/..",
+	}
+
+	for _, mid := range midPaths {
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("PathFuzz[mid:%s][%s]", mid, path),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s/%s", parsed.Scheme, parsed.Host, basePath, mid),
+		})
+	}
+
+	endPaths := []string{
+		"", "/", "/*", "/.", "/..", "/.../", "/;",
+		"/..;", "/;", "/.html", "/.json", "/.xml", "/.txt",
+		"/%00", "/%20", "/%09", "/null", "/undefined",
+		"/test", "/debug", "/debug=1", "/?",
+		"/#", "/#/", "/.../", "/..;",
+		"/WSDL", "/wsdl", "/?debug=1", "/?test",
+		"/~", "/`", "/\\",
+	}
+
+	for _, end := range endPaths {
+		variants = append(variants, Variant{
+			Name:       fmt.Sprintf("PathFuzz[end:%s][%s]", end, path),
+			Type:       "url",
+			MutatedURL: fmt.Sprintf("%s://%s%s%s", parsed.Scheme, parsed.Host, path, end),
+		})
+	}
 
 	return variants
 }
