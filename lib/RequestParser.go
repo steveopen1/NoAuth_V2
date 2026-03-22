@@ -134,7 +134,7 @@ func parseCurlCommand(curlStr string) (*ParsedRequest, error) {
 		Raw:     curlStr,
 	}
 
-	urlRegex := regexp.MustCompile(`'([^']+)'|"([^"]+)"|(https?://\S+)`)
+	urlRegex := regexp.MustCompile(`'([^']+)'|"([^"]+)"|(https?://[^\s'"]+)`)
 	urlMatches := urlRegex.FindAllStringSubmatch(curlStr, -1)
 
 	var targetURL string

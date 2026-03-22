@@ -190,15 +190,22 @@ func sendOriginalRequest(req *ParsedRequest) (*http.Response, error) {
 	}
 
 	for k, v := range req.Headers {
-		if k != "Host" {
-			httpReq.Header.Set(k, v)
-		} else {
+		if strings.ToLower(k) == "host" {
 			httpReq.Host = v
+		} else {
+			httpReq.Header.Set(k, v)
 		}
 	}
 
 	if req.ContentType != "" {
-		if _, ok := req.Headers["Content-Type"]; !ok {
+		hasContentType := false
+		for k := range req.Headers {
+			if strings.ToLower(k) == "content-type" {
+				hasContentType = true
+				break
+			}
+		}
+		if !hasContentType {
 			httpReq.Header.Set("Content-Type", req.ContentType)
 		}
 	}
@@ -215,14 +222,15 @@ func buildFuzzCurl(orig *ParsedRequest, variant *Variant, mutatedURL string, hea
 	}
 
 	for k, v := range headers {
-		if k == "Host" {
+		if strings.ToLower(k) == "host" {
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, v))
 	}
 
 	if body != "" && body != orig.Body {
-		parts = append(parts, fmt.Sprintf("-d '%s'", body))
+		escapedBody := strings.ReplaceAll(body, "'", "'\\''")
+		parts = append(parts, fmt.Sprintf("-d '%s'", escapedBody))
 	}
 
 	parts = append(parts, fmt.Sprintf("\"%s\"", mutatedURL))
