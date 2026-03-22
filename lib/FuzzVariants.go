@@ -344,12 +344,12 @@ func generateJSONNest(body string) []Variant {
 	}
 
 	stringMatches := JSONStringRegex.FindAllStringSubmatch(body, -1)
-	for _, match := range stringMatches {
-		if len(match) < 3 {
+	for _, stringMatch := range stringMatches {
+		if len(stringMatch) < 3 {
 			continue
 		}
-		key := match[1]
-		value := match[2]
+		key := stringMatch[1]
+		value := stringMatch[2]
 
 		oldPattern := fmt.Sprintf(`"%s":"%s"`, key, value)
 		newPattern := fmt.Sprintf(`"%s":{"%s":"%s"}`, key, key, value)
@@ -360,6 +360,16 @@ func generateJSONNest(body string) []Variant {
 				Name:        fmt.Sprintf("JSONNest[%s:\"%s\" -> nested]", key, value),
 				Type:        "json",
 				MutatedBody: mutated,
+			})
+		}
+
+		deepPattern := fmt.Sprintf(`"%s":{"%s":{"%s":"%s"}}`, key, key, key, value)
+		if strings.Contains(body, oldPattern) {
+			mutatedDeep := strings.Replace(body, oldPattern, deepPattern, 1)
+			variants = append(variants, Variant{
+				Name:        fmt.Sprintf("JSONDeepNest[%s:\"%s\" -> deep nested]", key, value),
+				Type:        "json",
+				MutatedBody: mutatedDeep,
 			})
 		}
 	}
@@ -378,7 +388,7 @@ func generateJSONWildcard(body string) []Variant {
 		key := match[1]
 		value := match[2]
 
-		if value == "" || value == "*" || value == "%" || value == "?" {
+		if value == "" || value == "*" || value == "%" || value == "?" || value == "null" {
 			continue
 		}
 
