@@ -93,14 +93,6 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 			var req *http.Request
 			var err error
 
-			if body != "" && body != parsedReq.Body {
-				req, err = http.NewRequest(parsedReq.Method, mutatedURL, bytes.NewBufferString(body))
-			} else if parsedReq.Body != "" {
-				req, err = http.NewRequest(parsedReq.Method, mutatedURL, bytes.NewBufferString(parsedReq.Body))
-			} else {
-				req, err = http.NewRequest(parsedReq.Method, mutatedURL, nil)
-			}
-
 			if err != nil {
 				return
 			}
@@ -237,21 +229,10 @@ func buildFuzzCurl(orig *ParsedRequest, variant *Variant, mutatedURL string, hea
 	}
 
 	if body != "" && body != orig.Body {
-		if variant.Type == "json" {
-			parts = append(parts, fmt.Sprintf("-d '%s'", body))
-		} else {
-			parts = append(parts, fmt.Sprintf("-d '%s'", body))
-		}
+		parts = append(parts, fmt.Sprintf("-d '%s'", body))
 	}
 
 	parts = append(parts, fmt.Sprintf("\"%s\"", mutatedURL))
 
 	return strings.Join(parts, " ")
-}
-
-func truncateStrForFuzz(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }

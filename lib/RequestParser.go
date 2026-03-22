@@ -244,29 +244,6 @@ func parseCurlCommand(curlStr string) (*ParsedRequest, error) {
 	return req, nil
 }
 
-func extractURLParams(rawURL string) map[string]string {
-	params := make(map[string]string)
-	if !strings.Contains(rawURL, "?") {
-		return params
-	}
-
-	queryPart := strings.SplitN(rawURL, "?", 2)[1]
-	if strings.Contains(queryPart, "#") {
-		queryPart = strings.SplitN(queryPart, "#", 2)[0]
-	}
-
-	pairs := strings.Split(queryPart, "&")
-	for _, pair := range pairs {
-		kv := strings.SplitN(pair, "=", 2)
-		if len(kv) == 2 {
-			params[kv[0]] = kv[1]
-		} else if len(kv) == 1 && kv[0] != "" {
-			params[kv[0]] = ""
-		}
-	}
-	return params
-}
-
 func isJSONFormat(body string) bool {
 	trimmed := strings.TrimSpace(body)
 	return strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")
