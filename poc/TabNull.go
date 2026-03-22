@@ -36,7 +36,7 @@ func TabNull(path string) []string {
 	// 在路径开头（第一个 / 之后）插入
 	if len(path) > 1 {
 		for _, inj := range injections {
-			results = append(results, "/" + inj + path[1:])
+			results = append(results, "/"+inj+path[1:])
 		}
 	}
 

@@ -12,12 +12,12 @@ func SemiTabTraversal(auth string) []string {
 
 	// 基础 ;%09..;/ 穿越模式
 	semiTabPrefixes := []string{
-		"/;%09..;/",          // Tab encoded
-		"/;%09%09..;/",       // Double Tab
-		"/;%00..;/",          // Null byte
-		"/;..;/",             // 经典 ;..;
-		"/;%2e%2e;/",         // URL encoded dots
-		"/;%252e%252e;/",     // Double encoded dots
+		"/;%09..;/",      // Tab encoded
+		"/;%09%09..;/",   // Double Tab
+		"/;%00..;/",      // Null byte
+		"/;..;/",         // 经典 ;..;
+		"/;%2e%2e;/",     // URL encoded dots
+		"/;%252e%252e;/", // Double encoded dots
 	}
 
 	for _, prefix := range semiTabPrefixes {
@@ -76,8 +76,8 @@ func SemiTabTraversal(auth string) []string {
 	}
 	for _, param := range paramInjections {
 		if strings.HasPrefix(auth, "/") {
-			results = append(results, "/" + param + auth)
-			results = append(results, auth + param)
+			results = append(results, "/"+param+auth)
+			results = append(results, auth+param)
 			// 在最后一个路径段前插入
 			lastSlash := strings.LastIndex(auth, "/")
 			if lastSlash > 0 {

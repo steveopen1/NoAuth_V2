@@ -127,14 +127,14 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString("|---|:---:|:---:|\n")
 
 	riskMap := map[string]string{
-		"可能绕过(高)":  "**严重**",
-		"可能绕过(中)":  "**高**",
-		"可能绕过(低)":  "中",
-		"长度差异大(高)": "**高**",
-		"长度差异大(中)": "中",
-		"长度差异小":    "低",
-		"重定向(需关注)": "中",
-		"重定向":      "信息",
+		"可能绕过(高)":   "**严重**",
+		"可能绕过(中)":   "**高**",
+		"可能绕过(低)":   "中",
+		"长度差异大(高)":  "**高**",
+		"长度差异大(中)":  "中",
+		"长度差异小":     "低",
+		"重定向(需关注)":  "中",
+		"重定向":       "信息",
 		"拒绝访问(403)": "信息",
 		"拒绝访问(401)": "信息",
 	}
@@ -287,26 +287,56 @@ func mergeAllData(sheets ...SheetData) []suspectItem {
 			switch sheet.Name {
 			case "GET 测试":
 				// 列: URL, 响应长度, 状态码, 判定, 复现命令
-				if len(row) > 1 { item.length = row[1] }
-				if len(row) > 2 { item.statusCode = row[2] }
-				if len(row) > 3 { item.classification = row[3] }
-				if len(row) > 4 { item.curlCmd = row[4] }
+				if len(row) > 1 {
+					item.length = row[1]
+				}
+				if len(row) > 2 {
+					item.statusCode = row[2]
+				}
+				if len(row) > 3 {
+					item.classification = row[3]
+				}
+				if len(row) > 4 {
+					item.curlCmd = row[4]
+				}
 				item.method = "GET"
 			case "POST 测试":
 				// 列: URL, 响应长度, 状态码, 请求类型, 判定, 复现命令
-				if len(row) > 1 { item.length = row[1] }
-				if len(row) > 2 { item.statusCode = row[2] }
-				if len(row) > 3 { item.method = row[3] }
-				if len(row) > 4 { item.classification = row[4] }
-				if len(row) > 5 { item.curlCmd = row[5] }
+				if len(row) > 1 {
+					item.length = row[1]
+				}
+				if len(row) > 2 {
+					item.statusCode = row[2]
+				}
+				if len(row) > 3 {
+					item.method = row[3]
+				}
+				if len(row) > 4 {
+					item.classification = row[4]
+				}
+				if len(row) > 5 {
+					item.curlCmd = row[5]
+				}
 			case "Header/Method 测试":
 				// 列: 绕过技术, URL, 响应长度, 状态码, 判定, 复现命令
-				if len(row) > 0 { item.method = row[0] }
-				if len(row) > 1 { item.url = row[1] }
-				if len(row) > 2 { item.length = row[2] }
-				if len(row) > 3 { item.statusCode = row[3] }
-				if len(row) > 4 { item.classification = row[4] }
-				if len(row) > 5 { item.curlCmd = row[5] }
+				if len(row) > 0 {
+					item.method = row[0]
+				}
+				if len(row) > 1 {
+					item.url = row[1]
+				}
+				if len(row) > 2 {
+					item.length = row[2]
+				}
+				if len(row) > 3 {
+					item.statusCode = row[3]
+				}
+				if len(row) > 4 {
+					item.classification = row[4]
+				}
+				if len(row) > 5 {
+					item.curlCmd = row[5]
+				}
 			}
 			items = append(items, item)
 		}
