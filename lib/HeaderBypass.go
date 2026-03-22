@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 )
 
-// bypassHeaders 用于 IP 伪造 / 路径重写的请求头
+// bypassIPHeaders 用于 IP 伪造的请求头
 var bypassIPHeaders = []string{
 	"X-Forwarded-For",
 	"X-Forward-For",
@@ -64,17 +64,12 @@ var methodOverrideHeaders = []string{
 	"X-Method-Override",
 }
 
-// alternativeMethods 替代 HTTP 方法
-var alternativeMethods = []string{
-	"PUT",
-	"PATCH",
-	"DELETE",
-	"TRACE",
-	"OPTIONS",
-	"HEAD",
-	"CONNECT",
-	"MOVE",
-	"COPY",
+// testCase 表示一个测试用例
+type testCase struct {
+	method  string
+	url     string
+	headers map[string]string
+	desc    string
 }
 
 // HeaderBypassStart 使用 HTTP Header 绕过技术进行测试
@@ -101,14 +96,6 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应: len=%d code=%d\n"), url+auth, origLen, origCode)
 
-	// 构建所有测试用例
-	type testCase struct {
-		method  string
-		url     string
-		headers map[string]string
-		desc    string
-	}
-
 	var cases []testCase
 
 	// 1. IP 伪造 Header 绕过
@@ -127,11 +114,10 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 	for _, header := range bypassPathHeaders {
 		cases = append(cases, testCase{
 			method:  "GET",
-			url:     url + noauth, // 请求无需鉴权接口
-			headers: map[string]string{header: auth}, // 但通过 header 指向鉴权接口
+			url:     url + noauth,
+			headers: map[string]string{header: auth},
 			desc:    fmt.Sprintf("PathRewrite[%s: %s]", header, auth),
 		})
-		// 也尝试请求根路径
 		cases = append(cases, testCase{
 			method:  "GET",
 			url:     url + "/",
@@ -140,7 +126,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 		})
 	}
 
-	// 3. 方法覆盖 Header
+	// 3. 方法覆盖 Header（通过 GET 请求 + Override 头模拟其他方法）
 	for _, header := range methodOverrideHeaders {
 		for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 			cases = append(cases, testCase{
@@ -166,23 +152,17 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 		desc:    "Referer[root]",
 	})
 
-	// 5. 替代 HTTP 方法
-	for _, method := range alternativeMethods {
-		cases = append(cases, testCase{
-			method:  method,
-			url:     url + auth,
-			headers: nil,
-			desc:    fmt.Sprintf("Method[%s]", method),
-		})
-	}
-
-	// 6. Content-Length: 0 + POST
+	// 5. Content-Length: 0 + POST
 	cases = append(cases, testCase{
 		method:  "POST",
 		url:     url + auth,
 		headers: map[string]string{"Content-Length": "0"},
 		desc:    "POST+Content-Length:0",
 	})
+
+	// 6. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
+	methodCases := discoverAndBuildMethodCases(url+auth, origLen, origCode, debug)
+	cases = append(cases, methodCases...)
 
 	total := len(cases)
 	fmt.Printf(Blue("[+] 共生成 %d 个 Header/Method 测试用例\n"), total)
@@ -272,4 +252,123 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int) {
 
 	headers := []string{"绕过技术", "URL", "响应长度", "状态码", "判定"}
 	ExportToExcel(url, "header_bypass_results.xlsx", headers, exportData)
+}
+
+// discoverAndBuildMethodCases 智能探测 HTTP 方法
+// 逻辑: GET/POST 已在主流程中测试，这里只做 OPTIONS 探测并按 Allow 头精准生成用例
+func discoverAndBuildMethodCases(targetURL string, origLen, origCode, debug int) []testCase {
+	var cases []testCase
+
+	// 已知被拦截的状态码（说明 GET/POST 不行，需要探测其他方法）
+	blocked := origCode == 401 || origCode == 403 || origCode == 405 || origCode == 302 || origCode == 301
+
+	if !blocked {
+		// GET 就能访问，不需要再测其他方法
+		if debug == 1 {
+			fmt.Printf(Blue("[*] GET 未被拦截 (code=%d)，跳过 HTTP 方法探测\n"), origCode)
+		}
+		return cases
+	}
+
+	fmt.Println(Blue("[+] GET/POST 被拦截，发送 OPTIONS 探测服务端支持的 HTTP 方法..."))
+
+	// 发送 OPTIONS 请求
+	req, err := http.NewRequest("OPTIONS", targetURL, nil)
+	if err != nil {
+		return cases
+	}
+
+	resp, err := HttpClient.Do(req)
+	if err != nil {
+		if debug == 1 {
+			fmt.Printf(Yellow("[!] OPTIONS 请求失败: %s\n"), err)
+		}
+		// OPTIONS 失败，回退测试几个常见方法
+		return buildFallbackMethodCases(targetURL)
+	}
+	defer resp.Body.Close()
+
+	// 解析 Allow 头
+	allow := resp.Header.Get("Allow")
+	if allow == "" {
+		// 有些服务器用 Access-Control-Allow-Methods
+		allow = resp.Header.Get("Access-Control-Allow-Methods")
+	}
+
+	fmt.Printf(Green("[+] OPTIONS 响应: code=%d, Allow: %s\n"), resp.StatusCode, allow)
+
+	if allow == "" {
+		if debug == 1 {
+			fmt.Println(Yellow("[!] 服务端未返回 Allow 头，回退测试常见方法"))
+		}
+		return buildFallbackMethodCases(targetURL)
+	}
+
+	// 解析 Allow 头中的方法列表
+	allowedMethods := parseAllowHeader(allow)
+
+	// 排除已经测试过的 GET 和 POST，只测试服务端声明支持的其他方法
+	skip := map[string]bool{"GET": true, "POST": true, "OPTIONS": true}
+
+	for _, method := range allowedMethods {
+		method = strings.TrimSpace(strings.ToUpper(method))
+		if skip[method] || method == "" {
+			continue
+		}
+		cases = append(cases, testCase{
+			method:  method,
+			url:     targetURL,
+			headers: nil,
+			desc:    fmt.Sprintf("Method[%s] (OPTIONS探测)", method),
+		})
+	}
+
+	if len(cases) == 0 {
+		fmt.Println(Blue("[*] OPTIONS 返回的方法中无额外可测方法"))
+	} else {
+		fmt.Printf(Blue("[+] 根据 OPTIONS 响应，将测试以下方法: %v\n"), methodNames(cases))
+	}
+
+	return cases
+}
+
+// buildFallbackMethodCases OPTIONS 不可用时，回退测试少量常见方法
+func buildFallbackMethodCases(targetURL string) []testCase {
+	// 只测试最有可能产生差异的几个方法，不盲测全部
+	fallbackMethods := []string{"PUT", "PATCH", "HEAD"}
+
+	fmt.Printf(Blue("[+] OPTIONS 不可用，回退测试: %v\n"), fallbackMethods)
+
+	var cases []testCase
+	for _, method := range fallbackMethods {
+		cases = append(cases, testCase{
+			method:  method,
+			url:     targetURL,
+			headers: nil,
+			desc:    fmt.Sprintf("Method[%s] (回退探测)", method),
+		})
+	}
+	return cases
+}
+
+// parseAllowHeader 解析 Allow 头，支持逗号分隔
+func parseAllowHeader(allow string) []string {
+	parts := strings.Split(allow, ",")
+	var methods []string
+	for _, p := range parts {
+		m := strings.TrimSpace(p)
+		if m != "" {
+			methods = append(methods, m)
+		}
+	}
+	return methods
+}
+
+// methodNames 从 testCase 列表中提取方法名
+func methodNames(cases []testCase) []string {
+	var names []string
+	for _, c := range cases {
+		names = append(names, c.method)
+	}
+	return names
 }
