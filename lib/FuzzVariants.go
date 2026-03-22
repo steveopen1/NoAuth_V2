@@ -19,9 +19,10 @@ type Variant struct {
 type VariantGenerator func(req *ParsedRequest) []Variant
 
 var (
-	JSONValueRegex  = regexp.MustCompile(`"([^"]+)":\s*(\d+)`)
-	JSONStringRegex = regexp.MustCompile(`"([^"]+)":\s*"([^"]*)"`)
-	FormParamRegex  = regexp.MustCompile(`([^=]+)=([^&]*)`)
+	JSONValueRegex    = regexp.MustCompile(`"([^"]+)":\s*(\d+)`)
+	JSONStringRegex   = regexp.MustCompile(`"([^"]+)":\s*"([^"]*)"`)
+	JSONBoolNullRegex = regexp.MustCompile(`"([^"]+)":\s*(true|false|null)`)
+	FormParamRegex    = regexp.MustCompile(`([^=]+)=([^&]*)`)
 )
 
 func GenerateAllVariants(req *ParsedRequest) []Variant {
@@ -80,11 +81,13 @@ func generateURLParamVariants(req *ParsedRequest) []Variant {
 
 		if strings.ToLower(name) != name {
 			lowerName := strings.ToLower(name)
-			variants = append(variants, Variant{
-				Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", lowerName, queryValues[lowerName][0], name, value),
-				Type:       "url",
-				MutatedURL: buildCasePollutedURL(parsedURL, lowerName, queryValues[lowerName][0], name, value),
-			})
+			if _, exists := queryValues[lowerName]; exists {
+				variants = append(variants, Variant{
+					Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", lowerName, queryValues[lowerName][0], name, value),
+					Type:       "url",
+					MutatedURL: buildPollutedURL(parsedURL, lowerName, queryValues[lowerName][0], name, value),
+				})
+			}
 		}
 
 		variants = append(variants, Variant{
@@ -116,15 +119,6 @@ func buildPollutedURL(parsed *url.URL, name1, val1, name2, val2 string) string {
 		newQuery = newQuery + "&" + q.Encode()
 	}
 
-	return fmt.Sprintf("%s://%s%s?%s", parsed.Scheme, parsed.Host, parsed.Path, newQuery)
-}
-
-func buildCasePollutedURL(parsed *url.URL, name1, val1, name2, val2 string) string {
-	q := parsed.Query()
-	newQuery := fmt.Sprintf("%s=%s&%s=%s", name1, url.QueryEscape(val1), name2, url.QueryEscape(val2))
-	if q.Encode() != "" {
-		newQuery = newQuery + "&" + q.Encode()
-	}
 	return fmt.Sprintf("%s://%s%s?%s", parsed.Scheme, parsed.Host, parsed.Path, newQuery)
 }
 
@@ -256,6 +250,30 @@ func generateJSONWildcard(body string) []Variant {
 				mutated := strings.Replace(body, oldPattern, newPattern, 1)
 				variants = append(variants, Variant{
 					Name:        fmt.Sprintf("Wildcard[%s:\"%s\" -> \"%s\"]", key, value, wc),
+					Type:        "json",
+					MutatedBody: mutated,
+				})
+			}
+		}
+	}
+
+	boolMatches := JSONBoolNullRegex.FindAllStringSubmatch(body, -1)
+	for _, match := range boolMatches {
+		if len(match) < 3 {
+			continue
+		}
+		key := match[1]
+		value := match[2]
+
+		replacements := []string{"1", "0", "-1", "null", "\"\"", "*"}
+		for _, r := range replacements {
+			oldPattern := fmt.Sprintf(`"%s":%s`, key, value)
+			newPattern := fmt.Sprintf(`"%s":%s`, key, r)
+
+			if strings.Contains(body, oldPattern) {
+				mutated := strings.Replace(body, oldPattern, newPattern, 1)
+				variants = append(variants, Variant{
+					Name:        fmt.Sprintf("Wildcard[%s:%s -> %s]", key, value, r),
 					Type:        "json",
 					MutatedBody: mutated,
 				})

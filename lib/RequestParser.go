@@ -69,7 +69,7 @@ func parseRawRequest(raw string) (*ParsedRequest, error) {
 
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil && len(line) == 0 {
+		if err != nil && line == "" {
 			break
 		}
 		line = strings.TrimSpace(line)
@@ -90,7 +90,7 @@ func parseRawRequest(raw string) (*ParsedRequest, error) {
 			keyLower := strings.ToLower(key)
 			if keyLower == "host" {
 				detectedHost = value
-				if !strings.Contains(req.URL, "://") {
+				if !strings.HasPrefix(pathWithQuery, "http://") && !strings.HasPrefix(pathWithQuery, "https://") {
 					req.URL = "http://" + value + pathWithQuery
 				}
 			} else {
@@ -99,7 +99,7 @@ func parseRawRequest(raw string) (*ParsedRequest, error) {
 		}
 	}
 
-	if bodyLines != nil {
+	if len(bodyLines) > 0 {
 		req.Body = strings.Join(bodyLines, "\n")
 	}
 
