@@ -37,14 +37,6 @@ func GenerateAllVariants(req *ParsedRequest) []Variant {
 	return variants
 }
 
-var httpMethods = []string{
-	"GET", "POST", "PUT", "DELETE", "PATCH",
-	"HEAD", "OPTIONS", "TRACE", "CONNECT",
-	"PUT", "COPY", "MOVE", "MKCOL", "PROPFIND", "PROPPATCH", "LOCK", "UNLOCK",
-	"VIEW", "HEAD", "LINK", "UNLINK", "CONNECT",
-	"TRACE", "TRACK", "DEBUG",
-}
-
 func generateURLPathFuzz(parsed *url.URL) []Variant {
 	var variants []Variant
 
@@ -81,7 +73,7 @@ func generateURLPathFuzz(parsed *url.URL) []Variant {
 	}
 
 	endPaths := []string{
-		"", "/", "/*", "/.", "/..", "/.../", "/;",
+		"", "/*", "/.", "/..", "/.../", "/;",
 		"/..;", "/;", "/.html", "/.json", "/.xml", "/.txt",
 		"/%00", "/%20", "/%09", "/null", "/undefined",
 		"/test", "/debug", "/debug=1", "/?",
@@ -171,8 +163,6 @@ func generateURLParamVariants(req *ParsedRequest) []Variant {
 			MutatedURL: encodedAmp,
 		})
 	}
-
-	variants = append(variants, generateURLPathSuffixes(parsedURL)...)
 
 	return variants
 }
