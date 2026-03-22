@@ -112,10 +112,13 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 				}
 				return
 			}
-			defer resp.Body.Close()
 
 			respBody, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			if err != nil {
+				mu.Lock()
+				fmt.Printf(Yellow("[!] %s 读取响应失败: %s\n"), variant.Name, err)
+				mu.Unlock()
 				return
 			}
 
@@ -125,7 +128,7 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 			meta := ExtractResponseMeta(resp, respBody)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
-			isDiff := (newLen != origLen || newCode != origCode) && newCode != 404
+			isDiff := newLen != origLen || newCode != origCode
 
 			mu.Lock()
 			defer mu.Unlock()
