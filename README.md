@@ -81,6 +81,11 @@ NoAuth_V2 是一款用于动态生成鉴权绕过 Payload 并进行自动化 Fuz
 | HTTP/1.0 降级 | 1 种 | Via: 1.0 模拟协议降级 |
 | Nginx 内部重定向 | 2 种 | X-Accel-Redirect 绕过前端 ACL |
 | 多头组合攻击 | 6 种 | 同时注入多个绕过头（最多 8 头并发注入） |
+| Hop-by-Hop 头利用 | 9 种 | Connection 头剥离 Cookie/Authorization/XFF 等鉴权头 |
+| 自定义 HTTP 方法 | 9 种 | FOO、JEFF、PROPFIND、MKCOL 等非标准方法绕过 WAF |
+| Spring 尾斜杠绕过 | 2 种 | antMatchers("/admin") 不匹配 "/admin/" |
+| Spring 换行注入 | 4 种 | regexMatchers 的 %0a/%0d 正则绕过 |
+| Spring 后缀模式 | 6 种 | .action/.do/.htm 后缀模式匹配绕过 |
 
 **HTTP 方法智能探测**
 

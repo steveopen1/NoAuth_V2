@@ -31,6 +31,14 @@ func GenerateURLs(baseURL string) []string {
 		";.php",
 		";.svc",
 		";.wsdl",
+		// Spring suffix pattern match 绕过（ref: 401 & 403 Bypass）
+		// Spring 旧版默认启用后缀模式匹配，/admin.action 会匹配 /admin
+		".action",
+		".do",
+		".htm",
+		";.action",
+		";.do",
+		";.htm",
 		"..",
 		"/.",
 		"/./",

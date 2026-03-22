@@ -110,7 +110,12 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString("- User-Agent 伪装 (Googlebot, Bingbot 等)\n")
 	sb.WriteString("- HTTP/1.0 降级模拟 (Via 头)\n")
 	sb.WriteString("- X-Accel-Redirect Nginx 内部重定向绕过\n")
-	sb.WriteString("- 多头组合攻击 (同时注入 8+ 个绕过头)\n\n")
+	sb.WriteString("- 多头组合攻击 (同时注入 8+ 个绕过头)\n")
+	sb.WriteString("- Hop-by-Hop 头利用 (Connection 头剥离鉴权头)\n")
+	sb.WriteString("- 自定义非标准 HTTP 方法 (FOO, JEFF, PROPFIND 等)\n")
+	sb.WriteString("- Spring antMatchers 尾斜杠绕过 (`/admin` vs `/admin/`)\n")
+	sb.WriteString("- Spring regexMatchers 换行注入 (`%0a`, `%0d` 绕过正则)\n")
+	sb.WriteString("- Spring 后缀模式匹配 (`.action`, `.do`, `.htm`)\n\n")
 
 	// ======== 结果统计 ========
 	sb.WriteString("## 3. 结果统计\n\n")
