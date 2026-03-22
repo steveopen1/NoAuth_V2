@@ -92,15 +92,15 @@ func generateURLParamVariants(req *ParsedRequest) []Variant {
 			Type:       "url",
 			MutatedURL: buildOrderedURL(parsedURL, name, value),
 		})
+	}
 
-		encodedAmp := strings.Replace(req.URL, "&", "%26", 1)
-		if encodedAmp != req.URL {
-			variants = append(variants, Variant{
-				Name:       "URLEncodeAmp[& -> %26]",
-				Type:       "url",
-				MutatedURL: encodedAmp,
-			})
-		}
+	encodedAmp := strings.Replace(req.URL, "&", "%26", 1)
+	if encodedAmp != req.URL {
+		variants = append(variants, Variant{
+			Name:       "URLEncodeAmp[& -> %26]",
+			Type:       "url",
+			MutatedURL: encodedAmp,
+		})
 	}
 
 	return variants
@@ -297,7 +297,7 @@ func generateFormVariants(req *ParsedRequest) []Variant {
 		})
 
 		variants = append(variants, Variant{
-			Name:        fmt.Sprintf("FormPollution[%s=%s&%s=%s]", param, value, param, value),
+			Name:        fmt.Sprintf("FormPollution[%s=%s -> %s=%s&%s=%s]", param, value, param, value, param, value),
 			Type:        "form",
 			MutatedBody: formBody + "&" + param + "=" + value,
 		})

@@ -63,7 +63,6 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 
 	origCode := resp.StatusCode
 	origLen := len(body)
-	origBody := string(body)
 
 	fmt.Printf(Green("[+] 原始请求响应: code=%d len=%d\n"), origCode, origLen)
 
@@ -93,7 +92,16 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 			var req *http.Request
 			var err error
 
+			if body != "" && body != parsedReq.Body {
+				req, err = http.NewRequest(parsedReq.Method, mutatedURL, bytes.NewBufferString(body))
+			} else {
+				req, err = http.NewRequest(parsedReq.Method, mutatedURL, nil)
+			}
+
 			if err != nil {
+				mu.Lock()
+				fmt.Printf(Yellow("[!] %s 创建请求失败: %s\n"), variant.Name, err)
+				mu.Unlock()
 				return
 			}
 
@@ -124,7 +132,6 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 
 			newCode := resp.StatusCode
 			newLen := len(respBody)
-			newBody := string(respBody)
 
 			meta := ExtractResponseMeta(resp, respBody)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
@@ -169,9 +176,6 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 					})
 				}
 			}
-
-			_ = origBody
-			_ = newBody
 		}(variant)
 	}
 
