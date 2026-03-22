@@ -154,18 +154,14 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 	}
 
 	var cases []testCase
+	var preExportData [][]string // 阶段一已完成的结果（IP 伪造粗筛）
 
-	// 1. IP 伪造 Header 绕过
-	for _, header := range bypassIPHeaders {
-		for _, ip := range bypassIPValues {
-			cases = append(cases, testCase{
-				method:  "GET",
-				url:     url + auth,
-				headers: map[string]string{header: ip},
-				desc:    fmt.Sprintf("Header[%s: %s]", header, ip),
-			})
-		}
-	}
+	// 1. IP 伪造 Header 绕过（两阶段探测）
+	// 阶段一: 每个 IP 值发 1 个请求，一次性携带所有 40+ 个伪造头（22 请求代替 880+）
+	// 阶段二: 仅对命中的 IP 值逐头拆分，精确定位生效的 Header
+	ipCases, ipExport := buildIPSpoofCases(url+auth, ctx, thread, debug)
+	cases = append(cases, ipCases...)
+	preExportData = append(preExportData, ipExport...)
 
 	// 2. 路径重写 Header 绕过
 	for _, header := range bypassPathHeaders {
@@ -520,9 +516,115 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 
 	wg.Wait()
 
-	result.Data = exportData
-	result.TotalPayloads = total
+	// 合并阶段一预导出的结果 + 主循环产出的结果
+	allExportData := append(preExportData, exportData...)
+	result.Data = allExportData
+	result.TotalPayloads = total + len(bypassIPValues) // 加上阶段一的探针数
 	return result
+}
+
+// buildIPSpoofCases 两阶段 IP 伪造探测
+// 阶段一（粗筛）: 每个 IP 值 1 个请求，携带所有 IP 伪造头 → 22 请求
+// 阶段二（精确定位）: 仅对响应异常的 IP 值，逐头拆分确认哪个 Header 生效
+// 返回值: (需要主循环执行的 testCase, 阶段一已产出的 exportData 行)
+func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int) ([]testCase, [][]string) {
+	origAuth := ctx.Auth
+
+	// ═══ 阶段一: 粗筛 ═══
+	fmt.Printf(Blue("[+] IP 伪造阶段一: 每个 IP 携带全部 %d 个伪造头，共 %d 个探针请求\n"),
+		len(bypassIPHeaders), len(bypassIPValues))
+
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, thread)
+	mu := &sync.Mutex{}
+	var hitIPs []string
+	var phase1Export [][]string
+	var phase1Count int64
+
+	for _, ip := range bypassIPValues {
+		wg.Add(1)
+		go func(ip string) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			// 构建携带所有 IP 伪造头的请求
+			req, err := http.NewRequest("GET", targetURL, bytes.NewBuffer([]byte{}))
+			if err != nil {
+				return
+			}
+			for _, header := range bypassIPHeaders {
+				req.Header.Set(header, ip)
+			}
+
+			resp, err := HttpClient.Do(req)
+			current := atomic.AddInt64(&phase1Count, 1)
+			if err != nil {
+				if debug == 1 {
+					mu.Lock()
+					fmt.Printf(Yellow("[!] IPProbe[%s] 请求失败: %s\n"), ip, err)
+					mu.Unlock()
+				}
+				return
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return
+			}
+
+			newLen := len(body)
+			newCode := resp.StatusCode
+			isHit := (newLen != origAuth.Len || newCode != origAuth.Code) && newCode != 404
+			desc := fmt.Sprintf("IPProbe[ALL_%d_HEADERS=%s]", len(bypassIPHeaders), ip)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if isHit {
+				hitIPs = append(hitIPs, ip)
+				bodySnippet := truncateBody(body, 4096)
+				location := resp.Header.Get("Location")
+				classification := ClassifyResult(ctx, newCode, newLen, bodySnippet, location)
+
+				fmt.Printf(Green("[+] 阶段一命中: %s len=%d code=%d → %s\n"), desc, newLen, newCode, classification)
+				phase1Export = append(phase1Export, []string{
+					desc, targetURL,
+					fmt.Sprintf("%d", newLen),
+					fmt.Sprintf("%d", newCode),
+					classification,
+				})
+			} else if debug == 1 {
+				fmt.Printf("[*] 阶段一无差异 [%d/%d]: %s len=%d code=%d\n",
+					current, len(bypassIPValues), desc, newLen, newCode)
+			}
+		}(ip)
+	}
+	wg.Wait()
+
+	// ═══ 阶段二: 精确定位 ═══
+	if len(hitIPs) == 0 {
+		fmt.Println(Blue("[*] IP 伪造阶段一: 全部 IP 值无响应差异，跳过阶段二（节省 880+ 请求）"))
+		return nil, phase1Export
+	}
+
+	fmt.Printf(Blue("[+] IP 伪造阶段二: %d 个 IP 命中，逐头拆分定位 (共 %d 个请求)\n"),
+		len(hitIPs), len(hitIPs)*len(bypassIPHeaders))
+
+	var phase2Cases []testCase
+	for _, ip := range hitIPs {
+		for _, header := range bypassIPHeaders {
+			phase2Cases = append(phase2Cases, testCase{
+				method:  "GET",
+				url:     targetURL,
+				headers: map[string]string{header: ip},
+				desc:    fmt.Sprintf("IPDrillDown[%s: %s]", header, ip),
+			})
+		}
+	}
+
+	return phase2Cases, phase1Export
 }
 
 // discoverAndBuildMethodCases 智能探测 HTTP 方法
