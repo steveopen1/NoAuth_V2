@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -74,11 +76,16 @@ func ExportToExcel(targetURL, filename string, headers []string, data [][]string
 	fmt.Printf(Green("[+] 结果已导出到: %s\n"), filePath)
 }
 
-// extractDomain 从 URL 中提取域名（含端口）
+// extractDomain 从 URL 中提取域名（含端口），并处理 Windows 不允许目录名含冒号的问题
 func extractDomain(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return ""
 	}
-	return u.Host
+	host := u.Host
+	// Windows 文件系统不允许目录名包含冒号，将 : 替换为 _
+	if runtime.GOOS == "windows" {
+		host = strings.ReplaceAll(host, ":", "_")
+	}
+	return host
 }
