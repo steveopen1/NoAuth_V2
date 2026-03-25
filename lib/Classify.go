@@ -23,6 +23,8 @@ func ClassifyResultWithColor(ctx ClassifyContext, newCode, newLen int, meta Resp
 		return result, "green"
 	case strings.Contains(result, "长度差异大"):
 		return result, "cyan"
+	case strings.Contains(result, "内容拦截"):
+		return result, "red"
 	default:
 		return result, ""
 	}
@@ -173,6 +175,12 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 	// 规则 4: 同为 200，按比例比较长度差异（自适应阈值）
 	// ═══════════════════════════════════════════════════
 	if newCode == 200 && origCode == 200 {
+		// 首先检查：内容是否包含鉴权拦截关键词（即使长度相似也可能是绕过）
+		blockedContent := detectBlockedContent(meta.Body)
+		if blockedContent != "" {
+			return "内容拦截(疑似绕过→" + blockedContent + ")"
+		}
+
 		diff := absInt(newLen - origLen)
 		// 自适应阈值：
 		//   大响应(>500B): 原始长度的 20%
@@ -242,6 +250,84 @@ func buildHeaderSignals(meta ResponseMeta) string {
 		return " [" + strings.Join(signals, ",") + "]"
 	}
 	return ""
+}
+
+// detectBlockedContent 检测响应内容是否包含鉴权拦截关键词
+// 返回拦截关键词内容（空字符串表示未检测到）
+func detectBlockedContent(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	lower := strings.ToLower(string(body))
+
+	// JSON 格式检测
+	if len(body) > 0 && (body[0] == '{' || body[0] == '[') {
+		blockedKeywords := []string{
+			`"code":401`, `"code":403`,
+			`"status":401`, `"status":403`,
+			`"error":"unauthorized`, `"error":"forbidden`,
+			`"error":"access denied`, `"error":"permission denied`,
+			`"message":"unauthorized`, `"message":"forbidden`,
+			`"msg":"unauthorized`, `"msg":"forbidden`,
+		}
+		for _, kw := range blockedKeywords {
+			if strings.Contains(lower, kw) {
+				return extractBlockedReason(lower)
+			}
+		}
+		return ""
+	}
+
+	// HTML/XML 格式检测
+	if strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype") {
+		blockedKeywords := []string{
+			"access denied", "access to this page has been denied",
+			"forbidden", "you don't have permission",
+			"authorization failed", "authorization required",
+			"unauthorized access", "unauthorized access denied",
+			"权限不足", "拒绝访问", "无权访问", "认证失败",
+			"登录后操作", "please login", "please sign in",
+		}
+		for _, kw := range blockedKeywords {
+			if strings.Contains(lower, kw) {
+				return "页面含拦截内容"
+			}
+		}
+	}
+
+	// 纯文本响应检测
+	plainBlocked := []string{
+		"unauthorized", "forbidden", "access denied",
+		"permission denied", "not authorized",
+		"401", "403", " unauthorized",
+	}
+	for _, kw := range plainBlocked {
+		if strings.Contains(lower, kw) {
+			return "内容含拦截关键词"
+		}
+	}
+
+	return ""
+}
+
+// extractBlockedReason 从响应中提取拦截原因
+func extractBlockedReason(lower string) string {
+	if strings.Contains(lower, "401") {
+		return "含401状态"
+	}
+	if strings.Contains(lower, "403") {
+		return "含403状态"
+	}
+	if strings.Contains(lower, "unauthorized") {
+		return "含unauthorized"
+	}
+	if strings.Contains(lower, "forbidden") {
+		return "含forbidden"
+	}
+	if strings.Contains(lower, "denied") {
+		return "含denied"
+	}
+	return "含拦截关键词"
 }
 
 // detectLoginPage 智能检测响应是否为登录页面
@@ -393,7 +479,8 @@ func truncateStr(s string, maxLen int) string {
 func IsHighRisk(classification string) bool {
 	return strings.Contains(classification, "可能绕过") ||
 		strings.Contains(classification, "长度差异大") ||
-		strings.Contains(classification, "重定向(需关注")
+		strings.Contains(classification, "重定向(需关注") ||
+		strings.Contains(classification, "内容拦截")
 }
 
 // ExtractConfidence 从分类标签中提取置信度
