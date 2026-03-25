@@ -130,6 +130,7 @@ func RemoveDuplicates(list []string) []string {
 
 // SemanticDedup 语义去重：URL 解码后路径相同的 payload 只保留编码版本
 // 例如 /admin%2fadduser 和 /admin/adduser 解码后相同，只保留编码版
+// 优化：使用 idxMap 记录 decoded -> result 索引，将 O(n²) 降为 O(n)
 func SemanticDedup(list []string) []string {
 	type entry struct {
 		raw     string
@@ -147,20 +148,20 @@ func SemanticDedup(list []string) []string {
 	}
 
 	seen := make(map[string]string)
+	idxMap := make(map[string]int) // 记录 decoded -> result 索引
 	var result []string
 
 	for _, e := range entries {
 		existing, exists := seen[e.decoded]
 		if !exists {
 			seen[e.decoded] = e.raw
+			idxMap[e.decoded] = len(result)
 			result = append(result, e.raw)
 		} else if len(e.raw) > len(existing) && e.raw != e.decoded {
 			seen[e.decoded] = e.raw
-			for i, r := range result {
-				if r == existing {
-					result[i] = e.raw
-					break
-				}
+			// 通过 idxMap 直接获取索引，O(1)
+			if prevIdx, ok := idxMap[e.decoded]; ok {
+				result[prevIdx] = e.raw
 			}
 		}
 	}
