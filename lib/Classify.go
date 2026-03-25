@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// 预编译的正则表达式，避免在热路径中重复编译
+var (
+	code401Regex = regexp.MustCompile(`"code":\s*401|"status":\s*401|"code":\s*"401"|"error_code":\s*401`)
+	code403Regex = regexp.MustCompile(`"code":\s*403|"status":\s*403|"code":\s*"403"|"error_code":\s*403`)
+)
+
 // ClassifyResultWithColor 返回判定结果和对应的高亮颜色
 // confidence: 高(red)/中(yellow)/低(green)
 func ClassifyResultWithColor(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta) (string, string) {
@@ -477,10 +483,7 @@ func detectBlockedContent(body []byte) string {
 
 // extractBlockedReason 从响应中提取拦截原因
 func extractBlockedReason(lower string) string {
-	// 使用正则精确匹配错误码，避免误匹配 "1401", "2401" 等
-	code401Regex := regexp.MustCompile(`"code":\s*401|"status":\s*401|"code":\s*"401"|"error_code":\s*401`)
-	code403Regex := regexp.MustCompile(`"code":\s*403|"status":\s*403|"code":\s*"403"|"error_code":\s*403`)
-
+	// 使用预编译的正则精确匹配错误码，避免误匹配 "1401", "2401" 等
 	if code401Regex.MatchString(lower) {
 		return "含401状态"
 	}
@@ -695,7 +698,7 @@ func ExtractBaseLabel(classification string) string {
 // 基于词汇（单词）集合的交集/并集比率
 func bodyJaccardSimilarity(body1, body2 []byte) float64 {
 	if len(body1) == 0 && len(body2) == 0 {
-		return 1.0
+		return 0.5 // 无法判断相似度，返回中间值
 	}
 	if len(body1) == 0 || len(body2) == 0 {
 		return 0.0
