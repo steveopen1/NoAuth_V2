@@ -1,12 +1,18 @@
 package poc
 
 import (
+	"bufio"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 )
 
 func Summary(noauth, auth string) []string {
+	return SummaryWithCustom(noauth, auth, "")
+}
+
+func SummaryWithCustom(noauth, auth, customFile string) []string {
 	if noauth == "" {
 		noauth = "/login"
 	}
@@ -49,6 +55,17 @@ func Summary(noauth, auth string) []string {
 		[]string{list15},
 	)
 
+	// 加载自定义payload
+	if customFile != "" {
+		customPayloads, err := LoadCustomPayloads(customFile, auth)
+		if err != nil {
+			fmt.Printf("[!] 加载自定义Payload失败: %s\n", err)
+		} else {
+			fmt.Printf("[*] 加载了 %d 个自定义Payload\n", len(customPayloads))
+			raw = append(raw, customPayloads...)
+		}
+	}
+
 	// 两阶段去重：精确去重 + 语义去重
 	rawCount := len(raw)
 	exact := RemoveDuplicates(raw)
@@ -60,6 +77,31 @@ func Summary(noauth, auth string) []string {
 		rawCount, exactCount, rawCount-exactCount, finalCount, exactCount-finalCount)
 
 	return result
+}
+
+func LoadCustomPayloads(filePath, auth string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var payloads []string
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		lineNum++
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, "/") {
+			line = "/" + line
+		}
+		payloads = append(payloads, line)
+	}
+
+	return payloads, nil
 }
 
 // CombineAllLists 合并任意数量的列表

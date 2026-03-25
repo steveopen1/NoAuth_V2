@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"noauth/lib"
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
 
 var (
@@ -23,6 +26,8 @@ var (
 	m       string
 	trace   bool
 	wayback bool
+	targets string
+	rate    int
 )
 
 func init() {
@@ -39,6 +44,8 @@ func init() {
 	flag.StringVar(&m, "m", "bypass", "fuzz 模式：bypass(401/403绕过) 或 logic(逻辑漏洞测试)")
 	flag.BoolVar(&trace, "trace", false, "显示模块调用链路追踪信息")
 	flag.BoolVar(&wayback, "wayback", false, "查询Wayback Machine历史信息")
+	flag.StringVar(&targets, "targets", "", "批量测试目标文件（每行一个URL）")
+	flag.IntVar(&rate, "rate", 0, "每秒最大请求数（0=无限制）")
 	flag.Usage = usage
 }
 
@@ -51,6 +58,14 @@ func checkFlags() {
 	if r != "" {
 		if _, err := os.Stat(r); os.IsNotExist(err) {
 			fmt.Printf("错误: 数据包文件不存在: %s\n", r)
+			os.Exit(0)
+		}
+		return
+	}
+
+	if targets != "" {
+		if n == "" || a == "" {
+			fmt.Println("错误: 批量测试需要指定 -n 和 -a 参数。")
 			os.Exit(0)
 		}
 		return
@@ -114,6 +129,11 @@ func main() {
 	}
 
 	checkFlags()
+
+	if targets != "" {
+		batchTestMode()
+		return
+	}
 
 	if r != "" {
 		requestFuzzMode()
@@ -221,4 +241,99 @@ func requestFuzzMode() {
 	if jsonFilename != "" {
 		fmt.Printf(lib.Green("[+] JSON 结果已保存: %s\n"), jsonFilename)
 	}
+}
+
+func batchTestMode() {
+	if n == "" || a == "" {
+		fmt.Println(lib.Red("[-] 批量测试需要指定 -n (无鉴权接口) 和 -a (鉴权接口)"))
+		os.Exit(0)
+	}
+
+	file, err := os.Open(targets)
+	if err != nil {
+		fmt.Printf(lib.Red("[-] 打开目标文件失败: %s\n"), err)
+		os.Exit(0)
+	}
+	defer file.Close()
+
+	var urls []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			if !strings.HasPrefix(line, "http://") && !strings.HasPrefix(line, "https://") {
+				line = "http://" + line
+			}
+			urls = append(urls, line)
+		}
+	}
+
+	if len(urls) == 0 {
+		fmt.Println(lib.Red("[-] 未找到有效的目标URL"))
+		os.Exit(0)
+	}
+
+	fmt.Printf(lib.Blue("[+] 批量测试模式: 加载了 %d 个目标\n"), len(urls))
+	if rate > 0 {
+		fmt.Printf(lib.Blue("[+] 请求速率限制: %d QPS\n"), rate)
+	}
+
+	lib.InitHTTPClient(proxy, timeout)
+
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, t)
+	varmu := &sync.Mutex{}
+	successCount := 0
+	failCount := 0
+
+	for i, targetURL := range urls {
+		wg.Add(1)
+		go func(idx int, url string) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			if rate > 0 {
+				time.Sleep(time.Second / time.Duration(rate))
+			}
+
+			fmt.Printf(lib.Blue("[%d/%d] 测试目标: %s\n"), idx+1, len(urls), url)
+
+			baseURL := strings.TrimSuffix(url, "/")
+			noauthBaseline, err := lib.FetchBaseline(baseURL + n)
+			if err != nil {
+				fmt.Printf(lib.Yellow("[!] 获取无鉴权接口基准失败: %s\n"), err)
+				noauthBaseline = lib.Baseline{}
+			}
+
+			getSheet, origCode, origLen, getHitPayloads := lib.GetStart(url, n, a, t, debug, noauthBaseline)
+			postSheet := lib.PostStart(url, n, a, t, debug, noauthBaseline, getHitPayloads)
+			headerSheet := lib.HeaderBypassStart(url, n, a, t, debug, noauthBaseline)
+
+			lib.ExportAllToExcel(url, []lib.SheetData{getSheet, postSheet, headerSheet})
+			lib.ExportAllToJSON(url, []lib.SheetData{getSheet, postSheet, headerSheet})
+
+			meta := lib.ReportMeta{
+				TargetURL:  url,
+				NoAuth:     n,
+				Auth:       a,
+				Threads:    t,
+				Timeout:    timeout,
+				Proxy:      proxy,
+				Debug:      debug,
+				OrigCode:   origCode,
+				OrigLen:    origLen,
+				NoAuthCode: noauthBaseline.Code,
+				NoAuthLen:  noauthBaseline.Len,
+			}
+			lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
+
+			varmu.Lock()
+			successCount++
+			varmu.Unlock()
+		}(i, targetURL)
+	}
+
+	wg.Wait()
+	fmt.Printf(lib.Green("\n[+] 批量测试完成: 成功 %d, 失败 %d\n"), successCount, failCount)
 }
