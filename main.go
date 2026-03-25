@@ -21,6 +21,7 @@ var (
 	timeout int
 	r       string
 	m       string
+	trace   bool
 )
 
 func init() {
@@ -35,6 +36,7 @@ func init() {
 	flag.IntVar(&timeout, "timeout", 15, "HTTP 请求超时时间（秒）")
 	flag.StringVar(&r, "r", "", "数据包文件路径（支持 RAW HTTP 格式和 cURL 格式）")
 	flag.StringVar(&m, "m", "bypass", "fuzz 模式：bypass(401/403绕过) 或 logic(逻辑漏洞测试)")
+	flag.BoolVar(&trace, "trace", false, "显示模块调用链路追踪信息")
 	flag.Usage = usage
 }
 
@@ -95,6 +97,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	if trace {
+		lib.EnableTrace()
+	}
+
 	checkFlags()
 
 	if r != "" {
@@ -117,6 +123,7 @@ func main() {
 
 	// 初始化共享 HTTP 客户端（支持代理、超时、跳过 TLS 验证、禁止自动重定向）
 	lib.InitHTTPClient(proxy, timeout)
+	lib.TraceCall("main", "InitHTTPClient", fmt.Sprintf("proxy=%s timeout=%d", proxy, timeout))
 
 	if proxy != "" {
 		fmt.Printf(lib.Blue("[+] 已设置 HTTP 代理: %s\n"), proxy)
@@ -124,27 +131,44 @@ func main() {
 	fmt.Printf(lib.Blue("[+] HTTP 超时: %d 秒 | 并发线程: %d\n"), timeout, t)
 
 	// 获取无鉴权接口基准（正向基线，用于双基线判定）
+	lib.TraceCall("main", "FetchBaseline", "获取无鉴权接口基准")
 	baseURL := strings.TrimSuffix(u, "/")
 	noauthBaseline, err := lib.FetchBaseline(baseURL + n)
 	if err != nil {
 		fmt.Printf(lib.Yellow("[!] 获取无鉴权接口基准失败: %s，将使用降级判定模式\n"), err)
 		noauthBaseline = lib.Baseline{}
+		lib.TraceReturn("main", "FetchBaseline", "降级模式: 无NoAuth基线")
 	} else {
 		fmt.Printf(lib.Green("[+] 无鉴权接口 %s 基准: code=%d len=%d\n"), baseURL+n, noauthBaseline.Code, noauthBaseline.Len)
+		lib.TraceReturn("main", "FetchBaseline", fmt.Sprintf("code=%d len=%d", noauthBaseline.Code, noauthBaseline.Len))
 	}
 
 	// 三阶段测试，收集结果（传入 noauth 基线供智能判定引擎使用）
+	lib.TraceInfo("main", "三阶段测试", "开始执行")
+	lib.TraceCall("main", "GetStart", "阶段一: GET 路径 Fuzz")
 	getSheet, origCode, origLen, getHitPayloads := lib.GetStart(u, n, a, t, debug, noauthBaseline)
+	lib.TraceReturn("main", "GetStart", fmt.Sprintf("完成: %d个命中", len(getHitPayloads)))
+
+	lib.TraceCall("main", "PostStart", "阶段二: POST 路径 Fuzz")
 	postSheet := lib.PostStart(u, n, a, t, debug, noauthBaseline, getHitPayloads)
+	lib.TraceReturn("main", "PostStart", "完成")
+
+	lib.TraceCall("main", "HeaderBypassStart", "阶段三: Header/Method 绕过")
 	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug, noauthBaseline)
+	lib.TraceReturn("main", "HeaderBypassStart", "完成")
 
 	// 统一导出到一个 Excel（三个 Sheet）
+	lib.TraceCall("main", "ExportAllToExcel", "导出 Excel 格式")
 	lib.ExportAllToExcel(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+	lib.TraceReturn("main", "ExportAllToExcel", "results.xlsx")
 
 	// 同时导出 JSON 格式便于自动化分析
+	lib.TraceCall("main", "ExportAllToJSON", "导出 JSON 格式")
 	lib.ExportAllToJSON(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+	lib.TraceReturn("main", "ExportAllToJSON", "results.json")
 
 	// 生成测试报告
+	lib.TraceCall("main", "GenerateReport", "生成 Markdown 报告")
 	meta := lib.ReportMeta{
 		TargetURL:  u,
 		NoAuth:     n,
@@ -159,6 +183,12 @@ func main() {
 		NoAuthLen:  noauthBaseline.Len,
 	}
 	lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
+	lib.TraceReturn("main", "GenerateReport", "report.md")
+
+	if trace {
+		lib.PrintExecutionChain()
+		lib.PrintTraceSummary()
+	}
 }
 
 func requestFuzzMode() {
