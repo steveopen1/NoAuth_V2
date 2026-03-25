@@ -35,7 +35,8 @@ func ClassifyResultWithColor(ctx ClassifyContext, newCode, newLen int, meta Resp
 type Baseline struct {
 	Code int
 	Len  int
-	Body []byte // 用于关键词检测
+	Body []byte       // 用于关键词检测
+	Meta ResponseMeta // 完整的响应元数据（Headers 等）
 }
 
 // ClassifyContext 双基线判定上下文
@@ -137,10 +138,12 @@ func FetchBaseline(targetURL string) (Baseline, error) {
 		return Baseline{Code: resp.StatusCode}, err
 	}
 
+	meta := ExtractResponseMeta(resp, body)
 	return Baseline{
 		Code: resp.StatusCode,
 		Len:  len(body),
 		Body: sampleBody(body, 8192),
+		Meta: meta,
 	}, nil
 }
 
@@ -168,13 +171,24 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 	if newCode == 200 && isBlockedCode(origCode) {
 		// 与无鉴权接口做相似度比较
 		if noauthCode == 200 && noauthLen > 0 {
-			sim := lengthSimilarity(newLen, noauthLen)
-			if sim > 0.9 && !isLoginPage {
-				suffix := headerSignals
-				return "可能绕过(高)" + suffix
+			lenSim := lengthSimilarity(newLen, noauthLen)
+			// 语义相似度（仅在有 Body 时计算）
+			bodySim := 0.5
+			if len(meta.Body) > 0 && len(ctx.NoAuth.Body) > 0 {
+				bodySim = bodyJaccardSimilarity(meta.Body, ctx.NoAuth.Body)
 			}
-			if sim > 0.7 && !isLoginPage {
+			// 综合相似度：长度权重 40%，语义权重 60%
+			combinedSim := lenSim*0.4 + bodySim*0.6
+
+			if combinedSim > 0.85 && !isLoginPage {
+				return "可能绕过(高)" + headerSignals
+			}
+			if combinedSim > 0.65 && !isLoginPage {
 				return "可能绕过(中)" + headerSignals
+			}
+			// 如果长度相似度高但语义不同，也要标记
+			if lenSim > 0.9 && bodySim < 0.5 && !isLoginPage {
+				return "可能绕过(中)[长度相似但内容异常]" + headerSignals
 			}
 		}
 		// 没有 noauth 基线或不够相似
@@ -222,32 +236,47 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 			return "内容拦截(疑似绕过→" + blockedContent + ")"
 		}
 
+		// 计算语义相似度
+		bodySimToAuth := 0.5
+		bodySimToNoAuth := 0.5
+		if len(meta.Body) > 0 && len(ctx.Auth.Body) > 0 {
+			bodySimToAuth = bodyJaccardSimilarity(meta.Body, ctx.Auth.Body)
+		}
+		if len(meta.Body) > 0 && len(ctx.NoAuth.Body) > 0 && noauthCode == 200 {
+			bodySimToNoAuth = bodyJaccardSimilarity(meta.Body, ctx.NoAuth.Body)
+		}
+
 		diff := absInt(newLen - origLen)
-		// 自适应阈值：
-		//   大响应(>500B): 原始长度的 20%
-		//   中响应(100-500B): 原始长度的 30%，最小 30 字节
-		//   小响应(<100B): 固定 15 字节（避免 10 字节阈值吞掉细微绕过）
 		threshold := adaptiveThreshold(origLen)
 
 		if diff > threshold {
 			// 进一步: 是否更接近 noauth 页面
 			if noauthLen > 0 && noauthCode == 200 {
 				diffToNoAuth := absInt(newLen - noauthLen)
-				simToNoAuth := lengthSimilarity(newLen, noauthLen)
-				if diffToNoAuth < diff && simToNoAuth > 0.7 {
+				lenSimToNoAuth := lengthSimilarity(newLen, noauthLen)
+				// 综合相似度
+				combinedSim := lenSimToNoAuth*0.4 + bodySimToNoAuth*0.6
+				if diffToNoAuth < diff && combinedSim > 0.7 {
 					return "长度差异大(高)" + headerSignals
 				}
+			}
+			// 如果语义更接近原始鉴权页面（可能被拦截了真实内容）
+			if bodySimToAuth > 0.8 {
+				return "长度差异大(内容相似原始)" + headerSignals
 			}
 			return "长度差异大(中)" + headerSignals
 		}
 
 		// 长度差异小，但检查 noauth 相似度（交叉验证）
 		if noauthLen > 0 && noauthCode == 200 {
-			simToNoAuth := lengthSimilarity(newLen, noauthLen)
-			simToAuth := lengthSimilarity(newLen, origLen)
+			lenSimToNoAuth := lengthSimilarity(newLen, noauthLen)
+			lenSimToAuth := lengthSimilarity(newLen, origLen)
+			// 综合相似度
+			combinedSimToNoAuth := lenSimToNoAuth*0.4 + bodySimToNoAuth*0.6
+			combinedSimToAuth := lenSimToAuth*0.4 + bodySimToAuth*0.6
 			// 如果响应更接近 noauth 而不是 auth，即使长度差异小也标记
-			if simToNoAuth > 0.9 && simToAuth < 0.8 && !isLoginPage {
-				return "长度差异大(高)" + headerSignals
+			if combinedSimToNoAuth > 0.85 && combinedSimToAuth < 0.7 && !isLoginPage {
+				return "长度差异小(疑似绕过)" + headerSignals
 			}
 		}
 		return "长度差异小"
@@ -372,6 +401,24 @@ func detectBlockedContent(body []byte) string {
 			`"code":50001`, `"code":50002`,
 			// 通用错误码模式
 			`"code":-1`, `"code":-2`,
+			// 更多成功/失败字段变体
+			`"success":"false"`, `"success":"0"`,
+			`"success":"fail"`, `"success":"failed"`,
+			`"result":"error"`, `"result":"fail"`, `"result":"failed"`,
+			`"result":"error"`, `"result":false`,
+			// 英文大写变体
+			`"ERROR":"Unauthorized"`, `"ERROR":"Forbidden"`,
+			`"SUCCESS":false`, `"SUCCESS":0`,
+			// 混合大小写
+			`"Success":false`, `"Success":0`,
+			// 通用错误消息
+			`"error":"invalid token"`, `"error":"token expired"`,
+			`"error":"token missing"`, `"error":"invalid session"`,
+			`"error":"session expired"`, `"error":"not logged in"`,
+			`"error":"authentication required"`, `"error":"access denied"`,
+			// 系统错误
+			`"code":"系统错误"`, `"code":"系统异常"`,
+			`"msg":"系统错误"`, `"msg":"系统异常"`,
 		}
 		for _, kw := range blockedKeywords {
 			if strings.Contains(lower, kw) {
@@ -392,6 +439,18 @@ func detectBlockedContent(body []byte) string {
 			"登录后操作", "please login", "please sign in",
 			"401 unauthorized", "403 forbidden",
 			"error 401", "error 403",
+			// 更多 WAF 拦截页面特征
+			"this website is using a security service",
+			"you have been blocked", "your IP has been blocked",
+			"attack blocked", "security check failed",
+			"suspicious activity", "unusual activity",
+			"captcha", "recaptcha", "are you a robot",
+			// 更多登录/认证页面
+			"session expired", "session timeout",
+			"please re-login", "please re-authenticate",
+			"invalid credentials", "incorrect password",
+			"account locked", "account disabled",
+			"token expired", "token invalid",
 		}
 		for _, kw := range blockedKeywords {
 			if strings.Contains(lower, kw) {
@@ -554,13 +613,14 @@ func isBlockedCode(code int) bool {
 // lengthSimilarity 计算两个长度的相似度 (0.0 ~ 1.0)
 func lengthSimilarity(a, b int) float64 {
 	if a == 0 && b == 0 {
-		return 1.0
+		return 0.5 // 两个空响应，无法判断相似度
 	}
 	bigger := float64(maxInt(a, b))
 	if bigger == 0 {
-		return 0
+		return 0.0
 	}
 	if a == 0 || b == 0 {
+		// 0 vs 非0，差异极大
 		return 0.0
 	}
 	diff := float64(absInt(a - b))
