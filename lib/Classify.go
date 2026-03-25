@@ -212,10 +212,35 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 		return "长度差异小"
 	}
 
-	// ═══════════════════════════════════════════════════
+	// ═══════════════════════════════════════════
 	// 规则 5: 其他状态码变化
-	// ═══════════════════════════════════════════════════
+	// ═══════════════════════════════════════════
 	if newCode != origCode {
+		// 优先检测高风险状态码
+		switch newCode {
+		case 429:
+			return "限流(429)"
+		case 500:
+			return "服务器错误(500)"
+		case 502:
+			return "网关错误(502)"
+		case 503:
+			return "服务不可用(503)"
+		case 504:
+			return "网关超时(504)"
+		case 400:
+			if origCode == 200 {
+				return "请求格式异常(400)"
+			}
+		case 422:
+			return "格式错误(422)"
+		case 405:
+			return "方法不允许(405)"
+		case 407:
+			return "代理认证失败(407)"
+		case 408:
+			return "请求超时(408)"
+		}
 		return fmt.Sprintf("状态码变化(%d→%d)", origCode, newCode)
 	}
 
@@ -269,6 +294,9 @@ func detectBlockedContent(body []byte) string {
 			`"error":"access denied`, `"error":"permission denied`,
 			`"message":"unauthorized`, `"message":"forbidden`,
 			`"msg":"unauthorized`, `"msg":"forbidden`,
+			`"error_code":401`, `"error_code":403`,
+			`"result":401`, `"result":403`,
+			`"ret":401`, `"ret":403`,
 		}
 		for _, kw := range blockedKeywords {
 			if strings.Contains(lower, kw) {
@@ -287,6 +315,8 @@ func detectBlockedContent(body []byte) string {
 			"unauthorized access", "unauthorized access denied",
 			"权限不足", "拒绝访问", "无权访问", "认证失败",
 			"登录后操作", "please login", "please sign in",
+			"401 unauthorized", "403 forbidden",
+			"error 401", "error 403",
 		}
 		for _, kw := range blockedKeywords {
 			if strings.Contains(lower, kw) {
@@ -299,7 +329,8 @@ func detectBlockedContent(body []byte) string {
 	plainBlocked := []string{
 		"unauthorized", "forbidden", "access denied",
 		"permission denied", "not authorized",
-		"401", "403", " unauthorized",
+		"401 unauthorized", "403 forbidden",
+		"error 401", "error 403",
 	}
 	for _, kw := range plainBlocked {
 		if strings.Contains(lower, kw) {
