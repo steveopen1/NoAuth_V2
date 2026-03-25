@@ -22,6 +22,7 @@ var (
 	r       string
 	m       string
 	trace   bool
+	wayback bool
 )
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	flag.StringVar(&r, "r", "", "数据包文件路径（支持 RAW HTTP 格式和 cURL 格式）")
 	flag.StringVar(&m, "m", "bypass", "fuzz 模式：bypass(401/403绕过) 或 logic(逻辑漏洞测试)")
 	flag.BoolVar(&trace, "trace", false, "显示模块调用链路追踪信息")
+	flag.BoolVar(&wayback, "wayback", false, "查询Wayback Machine历史信息")
 	flag.Usage = usage
 }
 
@@ -99,6 +101,16 @@ func main() {
 
 	if trace {
 		lib.EnableTrace()
+	}
+
+	if wayback {
+		if u == "" {
+			fmt.Println(lib.Red("[-] -wayback 需要配合 -u 参数使用"))
+			os.Exit(0)
+		}
+		lib.InitHTTPClient(proxy, timeout)
+		lib.PrintWaybackReport(u)
+		os.Exit(0)
 	}
 
 	checkFlags()

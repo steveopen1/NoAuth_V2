@@ -334,6 +334,34 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 		})
 	}
 
+	// 13.1 TRACE方法测试（ref: bypass-403, iamj0ker）
+	// TRACE方法可回显请求内容，某些中间件处理不当可造成XSS或绕过
+	cases = append(cases, testCase{
+		method:  "TRACE",
+		url:     url + auth,
+		headers: nil,
+		desc:    "TRACE[原始路径]",
+	})
+	cases = append(cases, testCase{
+		method:  "TRACE",
+		url:     url + noauth,
+		headers: nil,
+		desc:    "TRACE[无鉴权路径]",
+	})
+	cases = append(cases, testCase{
+		method:  "TRACK",
+		url:     url + auth,
+		headers: nil,
+		desc:    "TRACK[Microsoft扩展]",
+	})
+	// CONNECT方法（HTTP隧道）
+	cases = append(cases, testCase{
+		method:  "CONNECT",
+		url:     url + auth,
+		headers: nil,
+		desc:    "CONNECT[隧道模式]",
+	})
+
 	// 14. X-Accel-Redirect + Nginx 内部路由组合（ref: 403权限绕过另类思路）
 	// Nginx 的 X-Accel-Redirect 可触发内部 location 跳转，绕过前端 ACL
 	cases = append(cases, testCase{
