@@ -30,27 +30,41 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 	resp, err := HttpClient.Post(url+auth, "application/x-www-form-urlencoded", bytes.NewBuffer([]byte{}))
 	respjson, errjson := HttpClient.Post(url+auth, "application/json", bytes.NewBuffer([]byte("{}")))
 
-	if errjson != nil {
-		fmt.Printf(Red("[-] POST-Json 请求原始鉴权接口失败: %s\n"), errjson)
-		return result
-	}
-
 	if err != nil {
 		fmt.Printf(Red("[-] POST 请求原始鉴权接口失败: %s\n"), err)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if respjson != nil {
+			respjson.Body.Close()
+		}
 		return result
 	}
 	defer resp.Body.Close()
+
+	if errjson != nil {
+		fmt.Printf(Red("[-] POST-Json 请求原始鉴权接口失败: %s\n"), errjson)
+		resp.Body.Close()
+		if respjson != nil {
+			respjson.Body.Close()
+		}
+		return result
+	}
 	defer respjson.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	bodyjson, errjson := io.ReadAll(respjson.Body)
-	if errjson != nil {
-		fmt.Printf(Red("[-] 读取 Json 响应体失败: %s\n"), errjson)
+	if err != nil {
+		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
+		resp.Body.Close()
+		respjson.Body.Close()
 		return result
 	}
 
-	if err != nil {
-		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
+	bodyjson, errjson := io.ReadAll(respjson.Body)
+	if errjson != nil {
+		fmt.Printf(Red("[-] 读取 Json 响应体失败: %s\n"), errjson)
+		resp.Body.Close()
+		respjson.Body.Close()
 		return result
 	}
 
@@ -135,6 +149,9 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			current := atomic.AddInt64(&completed, 1)
 
 			if err != nil {
+				if respjson != nil {
+					respjson.Body.Close()
+				}
 				if debug == 1 {
 					mu.Lock()
 					fmt.Printf(Yellow("[!] POST 请求失败 [%d/%d] %s: %s\n"), current, total, url+value, err)
@@ -143,29 +160,31 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 				return
 			}
 			if errjson != nil {
+				resp.Body.Close()
 				if debug == 1 {
 					mu.Lock()
 					fmt.Printf(Yellow("[!] POST-Json 请求失败 [%d/%d] %s: %s\n"), current, total, url+value, errjson)
 					mu.Unlock()
 				}
-				if resp != nil {
-					resp.Body.Close()
-				}
 				return
 			}
-			defer respjson.Body.Close()
-			defer resp.Body.Close()
 
-			body, err := LimitedReadAll(resp.Body)
-			bodyjson, errjson := LimitedReadAll(respjson.Body)
-
+			respBody, err := LimitedReadAll(resp.Body)
 			if err != nil {
+				resp.Body.Close()
+				respjson.Body.Close()
 				return
 			}
 
+			respjsonBody, errjson := LimitedReadAll(respjson.Body)
 			if errjson != nil {
+				resp.Body.Close()
+				respjson.Body.Close()
 				return
 			}
+
+			body = respBody
+			bodyjson = respjsonBody
 
 			// 提取响应元数据
 			formMeta := ExtractResponseMeta(resp, body)

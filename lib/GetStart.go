@@ -110,8 +110,6 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 			isHit := (len2 != len1 || code != origCode) && code != 404
 
 			mu.Lock()
-			defer mu.Unlock()
-
 			// 记录命中的 payload（无论 debug 模式）
 			if isHit {
 				hitPayloadSet[value] = true
@@ -151,6 +149,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 					})
 				}
 			}
+			mu.Unlock()
 		}(value)
 	}
 

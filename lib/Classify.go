@@ -200,8 +200,10 @@ func adaptiveThreshold(origLen int) int {
 		return maxInt(origLen/5, 50) // 20%，最小 50B
 	case origLen >= 100:
 		return maxInt(origLen*3/10, 30) // 30%，最小 30B
+	case origLen >= 20:
+		return maxInt(origLen/2, 10) // 50%，最小 10B
 	default:
-		return 15 // 小响应固定 15B
+		return 5 // 极小响应固定 5B
 	}
 }
 
@@ -333,6 +335,9 @@ func lengthSimilarity(a, b int) float64 {
 	bigger := float64(maxInt(a, b))
 	if bigger == 0 {
 		return 0
+	}
+	if a == 0 || b == 0 {
+		return 0.0
 	}
 	diff := float64(absInt(a - b))
 	return 1.0 - diff/bigger
