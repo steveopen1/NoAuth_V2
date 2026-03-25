@@ -94,20 +94,17 @@ func SemanticDedup(list []string) []string {
 		decoded string
 	}
 
-	// 先计算所有 payload 的解码形式
 	entries := make([]entry, 0, len(list))
 	for _, item := range list {
 		decoded, err := url.PathUnescape(item)
 		if err != nil {
 			decoded = item
 		}
-		// 进一步规范化：去除连续斜杠、去除尾部斜杠
 		decoded = normalizePath(decoded)
 		entries = append(entries, entry{raw: item, decoded: decoded})
 	}
 
-	// 对于解码后相同的 payload，优先保留编码版本（更长的）
-	seen := make(map[string]string) // decoded → 已保留的 raw
+	seen := make(map[string]string)
 	var result []string
 
 	for _, e := range entries {
@@ -115,13 +112,13 @@ func SemanticDedup(list []string) []string {
 		if !exists {
 			seen[e.decoded] = e.raw
 			result = append(result, e.raw)
-		} else {
-			// 如果已存在的是未编码版本，替换为编码版本
-			if len(e.raw) > len(existing) && e.raw != e.decoded {
-				// 编码版本比纯文本版本更有绕过价值，但已经加入了纯文本版
-				// 两者都保留（编码版本可能绕过不同层的检查）
-				// 仅当解码后完全相同时才跳过
-				continue
+		} else if len(e.raw) > len(existing) && e.raw != e.decoded {
+			seen[e.decoded] = e.raw
+			for i, r := range result {
+				if r == existing {
+					result[i] = e.raw
+					break
+				}
 			}
 		}
 	}

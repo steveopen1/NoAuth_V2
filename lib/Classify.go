@@ -238,8 +238,6 @@ func detectLoginPage(body []byte) bool {
 
 	// ── JSON 响应: 仅检查强拒绝信号，不检查弱关键词 ──
 	if isJSON {
-		// JSON API 中出现 "password" 不算登录页（可能是错误消息）
-		// 只检查明确的拒绝语义
 		jsonDenyKeywords := []string{
 			"\"unauthorized\"", "\"access denied\"", "\"forbidden\"",
 			"\"not authorized\"", "\"permission denied\"",
@@ -252,7 +250,6 @@ func detectLoginPage(body []byte) bool {
 				matchCount++
 			}
 		}
-		// JSON 中至少要有拒绝语义才判定
 		return matchCount > 0
 	}
 

@@ -68,13 +68,6 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 		return result
 	}
 
-	if strings.Contains(string(body), url+auth) {
-		body = []byte(strings.Replace(string(body), url+auth, "", 1))
-	}
-	if strings.Contains(string(bodyjson), url+auth) {
-		bodyjson = []byte(strings.Replace(string(bodyjson), url+auth, "", 1))
-	}
-
 	len1 := len(body)
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口(POST-Form) %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
@@ -190,16 +183,20 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			formMeta := ExtractResponseMeta(resp, body)
 			jsonMeta := ExtractResponseMeta(respjson, bodyjson)
 
-			if strings.Contains(string(body), url+value) {
-				body = []byte(strings.Replace(string(body), url+value, "", 1))
+			if strings.Contains(formMeta.ContentType, "text/html") {
+				if strings.Contains(string(body), url+value) {
+					body = []byte(strings.Replace(string(body), url+value, "", 1))
+				}
 			}
 
 			len2 := len(body)
 			code := resp.StatusCode
 			formClassify := ClassifyResult(ctxForm, code, len2, formMeta)
 
-			if strings.Contains(string(bodyjson), url+value) {
-				bodyjson = []byte(strings.Replace(string(bodyjson), url+value, "", 1))
+			if strings.Contains(jsonMeta.ContentType, "text/html") {
+				if strings.Contains(string(bodyjson), url+value) {
+					bodyjson = []byte(strings.Replace(string(bodyjson), url+value, "", 1))
+				}
 			}
 
 			len2json := len(bodyjson)
