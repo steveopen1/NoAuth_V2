@@ -47,21 +47,62 @@ type ClassifyContext struct {
 
 // ResponseMeta 响应元数据（扩展到 Header 分析）
 type ResponseMeta struct {
-	Body        []byte // 关键词检测用（首尾采样）
-	Location    string // Location 头
-	SetCookie   string // Set-Cookie 头（新 session 信号）
-	ContentType string // Content-Type 头（响应结构变化信号）
-	WWWAuth     string // WWW-Authenticate 头（认证域变化）
+	Body          []byte // 关键词检测用（首尾采样）
+	Location      string // Location 头
+	SetCookie     string // Set-Cookie 头（新 session 信号）
+	ContentType   string // Content-Type 头（响应结构变化信号）
+	WWWAuth       string // WWW-Authenticate 头（认证域变化）
+	CacheControl  string // Cache-Control 头（缓存控制变化）
+	Authorization string // Authorization 头（认证信息残留检测）
+	Cookie        string // Cookie 头（Cookie 安全属性检测）
+	Server        string // Server 头（服务端标识）
+	XPoweredBy    string // X-Powered-By 头（技术栈信息）
+	// 增强字段
+	ETag          string // ETag 头（资源标识变化）
+	Expires       string // Expires 头（缓存过期变化）
+	ContentLength int    // Content-Length 头（与实际body长度对比）
+	Vary          string // Vary 头（缓存键变化）
+	// CORS 头
+	AccessControlAllowOrigin      string // Access-Control-Allow-Origin
+	AccessControlAllowMethods     string // Access-Control-Allow-Methods
+	AccessControlAllowHeaders     string // Access-Control-Allow-Headers
+	AccessControlExposeHeaders    string // Access-Control-Expose-Headers
+	AccessControlAllowCredentials bool   // Access-Control-Allow-Credentials
+	// 安全相关头
+	ContentSecurityPolicy   string // CSP 头
+	XFrameOptions           string // 点击劫持防护
+	XContentTypeOptions     string // MIME 类型 sniffing 防护
+	StrictTransportSecurity string // HSTS 头
+	// 响应时间（毫秒）
+	ResponseTimeMs int64
 }
 
 // ExtractResponseMeta 从 HTTP 响应中提取完整元数据
 func ExtractResponseMeta(resp *http.Response, body []byte) ResponseMeta {
 	return ResponseMeta{
-		Body:        sampleBody(body, 8192),
-		Location:    resp.Header.Get("Location"),
-		SetCookie:   resp.Header.Get("Set-Cookie"),
-		ContentType: resp.Header.Get("Content-Type"),
-		WWWAuth:     resp.Header.Get("WWW-Authenticate"),
+		Body:                          sampleBody(body, 8192),
+		Location:                      resp.Header.Get("Location"),
+		SetCookie:                     resp.Header.Get("Set-Cookie"),
+		ContentType:                   resp.Header.Get("Content-Type"),
+		WWWAuth:                       resp.Header.Get("WWW-Authenticate"),
+		CacheControl:                  resp.Header.Get("Cache-Control"),
+		Authorization:                 resp.Header.Get("Authorization"),
+		Cookie:                        resp.Header.Get("Cookie"),
+		Server:                        resp.Header.Get("Server"),
+		XPoweredBy:                    resp.Header.Get("X-Powered-By"),
+		ETag:                          resp.Header.Get("ETag"),
+		Expires:                       resp.Header.Get("Expires"),
+		ContentLength:                 len(body),
+		Vary:                          resp.Header.Get("Vary"),
+		AccessControlAllowOrigin:      resp.Header.Get("Access-Control-Allow-Origin"),
+		AccessControlAllowMethods:     resp.Header.Get("Access-Control-Allow-Methods"),
+		AccessControlAllowHeaders:     resp.Header.Get("Access-Control-Allow-Headers"),
+		AccessControlExposeHeaders:    resp.Header.Get("Access-Control-Expose-Headers"),
+		AccessControlAllowCredentials: resp.Header.Get("Access-Control-Allow-Credentials") == "true",
+		ContentSecurityPolicy:         resp.Header.Get("Content-Security-Policy"),
+		XFrameOptions:                 resp.Header.Get("X-Frame-Options"),
+		XContentTypeOptions:           resp.Header.Get("X-Content-Type-Options"),
+		StrictTransportSecurity:       resp.Header.Get("Strict-Transport-Security"),
 	}
 }
 
@@ -267,9 +308,26 @@ func buildHeaderSignals(meta ResponseMeta) string {
 	if meta.SetCookie != "" {
 		signals = append(signals, "NewCookie")
 	}
-	if meta.ContentType != "" && strings.Contains(meta.ContentType, "json") {
-		// Content-Type 是 JSON 而非 HTML → 可能是 API 真实响应
-		signals = append(signals, "JSON")
+	if meta.Authorization != "" && meta.SetCookie == "" {
+		signals = append(signals, "Auth残留")
+	}
+	if meta.Server != "" {
+		signals = append(signals, "Server:"+meta.Server)
+	}
+	if meta.XPoweredBy != "" {
+		signals = append(signals, meta.XPoweredBy)
+	}
+	if meta.WWWAuth != "" && strings.Contains(strings.ToLower(meta.WWWAuth), "bearer") {
+		signals = append(signals, "Bearer认证")
+	}
+	if meta.ContentType != "" {
+		if strings.Contains(meta.ContentType, "json") {
+			signals = append(signals, "JSON")
+		} else if strings.Contains(meta.ContentType, "html") {
+			signals = append(signals, "HTML")
+		} else if strings.Contains(meta.ContentType, "xml") {
+			signals = append(signals, "XML")
+		}
 	}
 	if len(signals) > 0 {
 		return " [" + strings.Join(signals, ",") + "]"
@@ -540,4 +598,332 @@ func ExtractBaseLabel(classification string) string {
 		return "重定向(需关注)"
 	}
 	return classification
+}
+
+// bodyJaccardSimilarity 计算两个响应体的 Jaccard 相似度
+// 基于词汇（单词）集合的交集/并集比率
+func bodyJaccardSimilarity(body1, body2 []byte) float64 {
+	if len(body1) == 0 && len(body2) == 0 {
+		return 1.0
+	}
+	if len(body1) == 0 || len(body2) == 0 {
+		return 0.0
+	}
+
+	words1 := extractWords(body1)
+	words2 := extractWords(body2)
+
+	set1 := make(map[string]bool)
+	set2 := make(map[string]bool)
+
+	for _, w := range words1 {
+		set1[w] = true
+	}
+	for _, w := range words2 {
+		set2[w] = true
+	}
+
+	intersection := 0
+	for w := range set1 {
+		if set2[w] {
+			intersection++
+		}
+	}
+
+	union := len(set1) + len(set2) - intersection
+	if union == 0 {
+		return 0.0
+	}
+
+	return float64(intersection) / float64(union)
+}
+
+// extractWords 从响应体中提取词汇（用于相似度计算）
+func extractWords(body []byte) []string {
+	var words []string
+	var current []byte
+	inTag := false
+
+	for _, b := range body {
+		c := charToLower(b)
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' {
+			current = append(current, c)
+		} else if c == '<' {
+			inTag = true
+			if len(current) >= 3 {
+				words = append(words, string(current))
+			}
+			current = nil
+		} else if c == '>' {
+			inTag = false
+		} else {
+			if !inTag && len(current) >= 3 {
+				words = append(words, string(current))
+			}
+			current = nil
+		}
+	}
+	if len(current) >= 3 {
+		words = append(words, string(current))
+	}
+	return words
+}
+
+// charToLower 将字节转换为小写（ASCII 范围内）
+func charToLower(b byte) byte {
+	if b >= 'A' && b <= 'Z' {
+		return b + 32
+	}
+	return b
+}
+
+// detectWAFSignature 检测响应中是否包含 WAF 特征
+func detectWAFSignature(meta ResponseMeta, body []byte) string {
+	combined := strings.ToLower(string(body)) + strings.ToLower(meta.Server) + strings.ToLower(meta.XPoweredBy)
+
+	wafSignatures := map[string]string{
+		"cloudflare":           "Cloudflare WAF",
+		"cf-ray":               "Cloudflare",
+		"__cfduid":             "Cloudflare",
+		"akamai":               "Akamai",
+		"akamai-origin":        "Akamai",
+		"x-akamai":             "Akamai",
+		"x-snap":               "Snap Proxy",
+		"x-cc":                 "CacheFly",
+		"incapsula":            "Imperva Incapsula",
+		"incap_":               "Imperva Incapsula",
+		"x-cdn":                "CDN",
+		"x-edge-location":      "Edge CDN",
+		"f5-networks":          "F5 ASM",
+		"bigip":                "F5 BIG-IP",
+		"fortigate":            "FortiGate",
+		"fortiweb":             "FortiWeb",
+		"signal":               "Signal Sciences",
+		"xsshijacking":         "XSS Protection",
+		"x-ocsp":               "OCSP",
+		"doss protection":      "DDoS Protection",
+		"rate limit":           "Rate Limiting",
+		"too many request":     "Rate Limiting",
+		"security policy":      "Security Policy",
+		"x-sql":                "SQL Injection Protection",
+		"x-xss":                "XSS Protection",
+		"x-content-type":       "Content Type Protection",
+		"x-frame-options":      "Clickjacking Protection",
+		"content-type-options": "MIME Sniffing Protection",
+	}
+
+	for sig, name := range wafSignatures {
+		if strings.Contains(combined, sig) {
+			return name
+		}
+	}
+
+	// 检查特殊 WAF 响应码
+	wafCodes := []string{
+		"403 forbidden", "403 access denied", "403 forbidden",
+		"403 you have been blocked", "403 this website is using a security service",
+		"401 unauthorized", "awaits verification", "security check",
+	}
+	for _, code := range wafCodes {
+		if strings.Contains(combined, code) {
+			return "WAF拦截"
+		}
+	}
+
+	return ""
+}
+
+// detectCacheChanges 检测缓存相关头的变化
+// 返回变化描述，空字符串表示无显著变化
+func detectCacheChanges(origMeta, newMeta ResponseMeta) string {
+	changes := []string{}
+
+	// ETag 变化
+	if origMeta.ETag != "" && newMeta.ETag != "" && origMeta.ETag != newMeta.ETag {
+		changes = append(changes, "ETag变化")
+	}
+
+	// Cache-Control 变化
+	if origMeta.CacheControl != "" && newMeta.CacheControl != "" && origMeta.CacheControl != newMeta.CacheControl {
+		changes = append(changes, "Cache-Control变化")
+	}
+
+	// Expires 变化
+	if origMeta.Expires != "" && newMeta.Expires != "" && origMeta.Expires != newMeta.Expires {
+		changes = append(changes, "Expires变化")
+	}
+
+	// Vary 变化
+	if origMeta.Vary != "" && newMeta.Vary != "" && origMeta.Vary != newMeta.Vary {
+		changes = append(changes, "Vary变化")
+	}
+
+	// Content-Length 与实际长度不符（压缩或传输编码变化）
+	if newMeta.ContentLength > 0 && len(newMeta.Body) > 0 {
+		ratio := float64(len(newMeta.Body)) / float64(newMeta.ContentLength)
+		// 如果实际长度是声明长度的 10 倍以上，可能有编码差异
+		if ratio > 10 {
+			changes = append(changes, "Content-Length差异大")
+		}
+	}
+
+	if len(changes) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(changes, ",") + "]"
+}
+
+// detectCORsChanges 检测 CORS 头的变化
+// 返回变化描述，空字符串表示无显著变化
+func detectCORsChanges(origMeta, newMeta ResponseMeta) string {
+	changes := []string{}
+
+	// Access-Control-Allow-Origin 变化
+	if origMeta.AccessControlAllowOrigin != newMeta.AccessControlAllowOrigin {
+		if newMeta.AccessControlAllowOrigin == "*" {
+			changes = append(changes, "CORS:允许所有源")
+		} else if newMeta.AccessControlAllowOrigin != "" {
+			changes = append(changes, "CORS:Origin变化")
+		}
+	}
+
+	// Access-Control-Allow-Methods 变化
+	if origMeta.AccessControlAllowMethods != newMeta.AccessControlAllowMethods &&
+		newMeta.AccessControlAllowMethods != "" {
+		changes = append(changes, "CORS:Methods扩展")
+	}
+
+	// Access-Control-Allow-Headers 变化
+	if origMeta.AccessControlAllowHeaders != newMeta.AccessControlAllowHeaders &&
+		newMeta.AccessControlAllowHeaders != "" {
+		changes = append(changes, "CORS:Headers扩展")
+	}
+
+	// Access-Control-Allow-Credentials 变化
+	if !origMeta.AccessControlAllowCredentials && newMeta.AccessControlAllowCredentials {
+		changes = append(changes, "CORS:Credentials启用")
+	}
+
+	// Access-Control-Expose-Headers 变化
+	if origMeta.AccessControlExposeHeaders != newMeta.AccessControlExposeHeaders &&
+		newMeta.AccessControlExposeHeaders != "" {
+		changes = append(changes, "CORS:ExposeHeaders变化")
+	}
+
+	if len(changes) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(changes, ",") + "]"
+}
+
+// detectSecurityHeaderChanges 检测安全头的变化
+// 返回变化描述，空字符串表示无显著变化
+func detectSecurityHeaderChanges(origMeta, newMeta ResponseMeta) string {
+	changes := []string{}
+
+	// CSP 变化
+	if origMeta.ContentSecurityPolicy != newMeta.ContentSecurityPolicy {
+		if newMeta.ContentSecurityPolicy == "" {
+			changes = append(changes, "CSP缺失")
+		} else if strings.Contains(newMeta.ContentSecurityPolicy, "unsafe") {
+			changes = append(changes, "CSP宽松")
+		} else {
+			changes = append(changes, "CSP变化")
+		}
+	}
+
+	// X-Frame-Options 变化
+	if origMeta.XFrameOptions != newMeta.XFrameOptions {
+		if newMeta.XFrameOptions == "" {
+			changes = append(changes, "X-Frame缺失")
+		} else if strings.ToLower(newMeta.XFrameOptions) == "deny" {
+			changes = append(changes, "X-Frame:DENY")
+		} else if strings.ToLower(newMeta.XFrameOptions) == "sameorigin" {
+			// Same origin is OK
+		} else {
+			changes = append(changes, "X-Frame变化")
+		}
+	}
+
+	// X-Content-Type-Options 变化
+	if origMeta.XContentTypeOptions != newMeta.XContentTypeOptions {
+		if newMeta.XContentTypeOptions == "" {
+			changes = append(changes, "X-Content-Type缺失")
+		} else if strings.ToLower(newMeta.XContentTypeOptions) == "nosniff" {
+			// This is good
+		} else {
+			changes = append(changes, "X-Content-Type变化")
+		}
+	}
+
+	// HSTS 变化
+	if origMeta.StrictTransportSecurity != newMeta.StrictTransportSecurity {
+		if newMeta.StrictTransportSecurity == "" {
+			changes = append(changes, "HSTS缺失")
+		} else {
+			changes = append(changes, "HSTS变化")
+		}
+	}
+
+	if len(changes) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(changes, ",") + "]"
+}
+
+// detectResponseTimeAnomaly 检测响应时间异常
+// 响应时间异常快可能表示绕过了某些检查
+// 响应时间异常慢可能表示触发了 WAF 或其他安全机制
+func detectResponseTimeAnomaly(responseTimeMs int64, baselineTimeMs int64) string {
+	if responseTimeMs <= 0 || baselineTimeMs <= 0 {
+		return ""
+	}
+
+	// 如果响应时间小于基线的 10%，可能是绕过了某些检查
+	if float64(responseTimeMs) < float64(baselineTimeMs)*0.1 {
+		return "[响应极快]"
+	}
+
+	// 如果响应时间是基线的 5 倍以上，可能是触发了 WAF
+	if float64(responseTimeMs) > float64(baselineTimeMs)*5 && responseTimeMs > 1000 {
+		return "[响应慢:WAF嫌疑]"
+	}
+
+	return ""
+}
+
+// BuildEnhancedSignals 构建增强的信号标记
+// 综合 WAF、缓存、CORS、安全头、时间等多维度信号
+func BuildEnhancedSignals(origMeta, newMeta ResponseMeta, responseTimeMs, baselineTimeMs int64) string {
+	var signals []string
+
+	waf := detectWAFSignature(newMeta, newMeta.Body)
+	if waf != "" {
+		signals = append(signals, waf)
+	}
+
+	cache := detectCacheChanges(origMeta, newMeta)
+	if cache != "" {
+		signals = append(signals, cache)
+	}
+
+	cors := detectCORsChanges(origMeta, newMeta)
+	if cors != "" {
+		signals = append(signals, cors)
+	}
+
+	security := detectSecurityHeaderChanges(origMeta, newMeta)
+	if security != "" {
+		signals = append(signals, security)
+	}
+
+	timeAnomaly := detectResponseTimeAnomaly(responseTimeMs, baselineTimeMs)
+	if timeAnomaly != "" {
+		signals = append(signals, timeAnomaly)
+	}
+
+	if len(signals) == 0 {
+		return ""
+	}
+	return " " + strings.Join(signals, " ")
 }
