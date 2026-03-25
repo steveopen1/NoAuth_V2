@@ -141,6 +141,9 @@ func main() {
 	// 统一导出到一个 Excel（三个 Sheet）
 	lib.ExportAllToExcel(u, []lib.SheetData{getSheet, postSheet, headerSheet})
 
+	// 同时导出 JSON 格式便于自动化分析
+	lib.ExportAllToJSON(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+
 	// 生成测试报告
 	meta := lib.ReportMeta{
 		TargetURL:  u,
@@ -170,5 +173,10 @@ func requestFuzzMode() {
 	filename := lib.ExportSingleSheetToExcel(r, fuzzSheet)
 	if filename != "" {
 		fmt.Printf(lib.Green("[+] 结果已保存: %s\n"), filename)
+	}
+
+	jsonFilename := lib.ExportSingleSheetToJSON(r, fuzzSheet)
+	if jsonFilename != "" {
+		fmt.Printf(lib.Green("[+] JSON 结果已保存: %s\n"), jsonFilename)
 	}
 }

@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -192,4 +193,207 @@ func ExportSingleSheetToExcel(fileName string, sheet SheetData) string {
 	}
 
 	return outputPath
+}
+
+// ResultRecord 表示单条测试结果
+type ResultRecord struct {
+	Sheet          string `json:"sheet"`
+	URL            string `json:"url,omitempty"`
+	Method         string `json:"method,omitempty"`
+	Technique      string `json:"technique,omitempty"`
+	Length         int    `json:"length"`
+	Code           int    `json:"status_code"`
+	Classification string `json:"classification"`
+	RequestType    string `json:"request_type,omitempty"`
+	CurlCmd        string `json:"curl_cmd,omitempty"`
+	IsHighRisk     bool   `json:"is_high_risk"`
+}
+
+// isRowHighRisk 检查一行数据是否包含高风险分类
+func isRowHighRisk(row []string) bool {
+	for _, val := range row {
+		if IsHighRisk(val) {
+			return true
+		}
+	}
+	return false
+}
+
+// ExportAllToJSON 将所有 Sheet 数据导出为 JSON 文件
+func ExportAllToJSON(targetURL string, sheets []SheetData) string {
+	var validSheets []SheetData
+	for _, s := range sheets {
+		if len(s.Data) > 0 {
+			validSheets = append(validSheets, s)
+		}
+	}
+	if len(validSheets) == 0 {
+		fmt.Println(Yellow("[!] 所有测试结果为空，跳过 JSON 导出"))
+		return ""
+	}
+
+	dir := GetOutputDir(targetURL)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf(Red("[-] 创建输出目录失败: %s\n"), err)
+		return ""
+	}
+
+	var records []ResultRecord
+	for _, sheet := range validSheets {
+		for _, row := range sheet.Data {
+			record := ResultRecord{
+				Sheet:      sheet.Name,
+				IsHighRisk: isRowHighRisk(row),
+			}
+
+			switch sheet.Name {
+			case "GET 测试":
+				if len(row) >= 4 {
+					record.URL = row[0]
+					record.Length = parseIntSafe(row[1])
+					record.Code = parseIntSafe(row[2])
+					record.Classification = row[3]
+				}
+				if len(row) >= 5 {
+					record.CurlCmd = row[4]
+				}
+			case "POST 测试":
+				if len(row) >= 5 {
+					record.URL = row[0]
+					record.Length = parseIntSafe(row[1])
+					record.Code = parseIntSafe(row[2])
+					record.RequestType = row[3]
+					record.Classification = row[4]
+				}
+				if len(row) >= 6 {
+					record.CurlCmd = row[5]
+				}
+			case "Header/Method 测试":
+				if len(row) >= 5 {
+					record.Technique = row[0]
+					record.URL = row[1]
+					record.Length = parseIntSafe(row[2])
+					record.Code = parseIntSafe(row[3])
+					record.Classification = row[4]
+				}
+				if len(row) >= 6 {
+					record.CurlCmd = row[5]
+				}
+			default:
+				if len(row) >= 4 {
+					record.URL = row[0]
+					record.Length = parseIntSafe(row[1])
+					record.Code = parseIntSafe(row[2])
+					record.Classification = row[3]
+				}
+			}
+
+			records = append(records, record)
+		}
+	}
+
+	outputPath := filepath.Join(dir, "results.json")
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		fmt.Printf(Red("[-] JSON 序列化失败: %s\n"), err)
+		return ""
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		fmt.Printf(Red("[-] 保存 JSON 文件失败: %s\n"), err)
+		return ""
+	}
+
+	fmt.Printf(Green("[+] JSON 结果已导出到: %s\n"), outputPath)
+	return outputPath
+}
+
+// ExportSingleSheetToJSON 导出单个 Sheet 到 JSON 文件
+func ExportSingleSheetToJSON(fileName string, sheet SheetData) string {
+	if len(sheet.Data) == 0 {
+		fmt.Println(Yellow("[!] 测试结果为空，跳过 JSON 导出"))
+		return ""
+	}
+
+	baseName := filepath.Base(fileName)
+	ext := filepath.Ext(baseName)
+	dir := strings.TrimSuffix(fileName, ext)
+
+	var records []ResultRecord
+	for _, row := range sheet.Data {
+		record := ResultRecord{
+			Sheet:      sheet.Name,
+			IsHighRisk: isRowHighRisk(row),
+		}
+
+		switch sheet.Name {
+		case "GET 测试":
+			if len(row) >= 4 {
+				record.URL = row[0]
+				record.Length = parseIntSafe(row[1])
+				record.Code = parseIntSafe(row[2])
+				record.Classification = row[3]
+			}
+			if len(row) >= 5 {
+				record.CurlCmd = row[4]
+			}
+		case "POST 测试":
+			if len(row) >= 5 {
+				record.URL = row[0]
+				record.Length = parseIntSafe(row[1])
+				record.Code = parseIntSafe(row[2])
+				record.RequestType = row[3]
+				record.Classification = row[4]
+			}
+			if len(row) >= 6 {
+				record.CurlCmd = row[5]
+			}
+		case "Header/Method 测试":
+			if len(row) >= 5 {
+				record.Technique = row[0]
+				record.URL = row[1]
+				record.Length = parseIntSafe(row[2])
+				record.Code = parseIntSafe(row[3])
+				record.Classification = row[4]
+			}
+			if len(row) >= 6 {
+				record.CurlCmd = row[5]
+			}
+		default:
+			if len(row) >= 4 {
+				record.URL = row[0]
+				record.Length = parseIntSafe(row[1])
+				record.Code = parseIntSafe(row[2])
+				record.Classification = row[3]
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	outputPath := dir + "_fuzz_results.json"
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		fmt.Printf(Red("[-] JSON 序列化失败: %s\n"), err)
+		return ""
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		fmt.Printf(Red("[-] 保存 JSON 文件失败: %s\n"), err)
+		return ""
+	}
+
+	fmt.Printf(Green("[+] JSON 结果已导出到: %s\n"), outputPath)
+	return outputPath
+}
+
+// parseIntSafe 安全解析整数
+func parseIntSafe(s string) int {
+	var n int
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		}
+	}
+	return n
 }
