@@ -55,7 +55,8 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 
 	fmt.Printf(Green("[+] 原始请求响应: code=%d len=%d\n"), origCode, origLen)
 
-	baseline := Baseline{Code: origCode, Len: origLen}
+	origMeta := ExtractResponseMeta(resp, body)
+	baseline := Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: origMeta}
 	ctx := ClassifyContext{
 		Auth:   baseline,
 		NoAuth: Baseline{},

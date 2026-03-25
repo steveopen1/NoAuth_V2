@@ -76,13 +76,16 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 	origCodeJson := respjson.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口(POST-Json) %s 的响应长度: len=%d code=%d\n"), url+auth, lenjson, origCodeJson)
 
+	authFormMeta := ExtractResponseMeta(resp, body)
+	authJsonMeta := ExtractResponseMeta(respjson, bodyjson)
+
 	// 构建双基线判定上下文（Form 和 Json 各自有独立的 Auth 基线）
 	ctxForm := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: len1},
+		Auth:   Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authFormMeta},
 		NoAuth: noauthBaseline,
 	}
 	ctxJson := ClassifyContext{
-		Auth:   Baseline{Code: origCodeJson, Len: lenjson},
+		Auth:   Baseline{Code: origCodeJson, Len: lenjson, Body: sampleBody(bodyjson, 8192), Meta: authJsonMeta},
 		NoAuth: noauthBaseline,
 	}
 

@@ -147,9 +147,11 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应: len=%d code=%d\n"), url+auth, origLen, origCode)
 
+	authMeta := ExtractResponseMeta(resp, body)
+
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: origLen},
+		Auth:   Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: authMeta},
 		NoAuth: noauthBaseline,
 	}
 

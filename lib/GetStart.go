@@ -40,9 +40,11 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
 
+	authMeta := ExtractResponseMeta(resp, body)
+
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: len1},
+		Auth:   Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authMeta},
 		NoAuth: noauthBaseline,
 	}
 
