@@ -53,8 +53,38 @@ func init() {
 }
 
 func checkFlags() {
+	// 边界校验：确保 timeout 和线程数有合理最小值
+	if timeout < 1 {
+		fmt.Printf(lib.Yellow("[*] 超时时间设置为 %d，修正为最小值 1 秒\n"), timeout)
+	}
+	if t < 1 {
+		fmt.Printf(lib.Yellow("[*] 并发线程设置为 %d，修正为最小值 1\n"), t)
+		t = 1
+	}
+
 	if list && u != "" {
 		fmt.Println("错误: -list 和 -u 不能同时使用，请选择其中一个。")
+		os.Exit(0)
+	}
+
+	if r != "" {
+		if _, err := os.Stat(r); os.IsNotExist(err) {
+			fmt.Printf("错误: 数据包文件不存在: %s\n", r)
+			os.Exit(0)
+		}
+		return
+	}
+
+	if targets != "" {
+		if n == "" || a == "" {
+			fmt.Println("错误: 批量测试需要指定 -n 和 -a 参数。")
+			os.Exit(0)
+		}
+		return
+	}
+
+	if n == "" || a == "" {
+		fmt.Println("错误: 缺少必要参数。请使用 -h 查看所需参数。")
 		os.Exit(0)
 	}
 
