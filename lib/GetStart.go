@@ -102,7 +102,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 			len2 := len(body)
 			code := resp.StatusCode
-			classification := ClassifyResult(ctx, code, len2, meta)
+			classification, color := ClassifyResultWithColor(ctx, code, len2, meta)
 
 			isHit := (len2 != len1 || code != origCode) && code != 404
 
@@ -117,8 +117,18 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 				fmt.Printf(Blue("[*] GET 进度: [%d/%d]\n"), current, total)
 			}
 
+			// 根据置信度级别使用不同颜色输出
+			hitPrefix := Green
+			if color == "red" {
+				hitPrefix = Red
+			} else if color == "yellow" {
+				hitPrefix = Yellow
+			} else if color == "cyan" {
+				hitPrefix = Cyan
+			}
+
 			if debug == 1 {
-				fmt.Printf(Green("[+] GET: %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
+				fmt.Printf(hitPrefix("[+] GET: %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
@@ -132,7 +142,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 					})
 				}
 			} else if isHit {
-				fmt.Printf(Green("[+] GET: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
+				fmt.Printf(hitPrefix("[+] GET: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, classification)
 				key := fmt.Sprintf("GET|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true

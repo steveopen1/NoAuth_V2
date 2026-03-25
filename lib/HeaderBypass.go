@@ -580,7 +580,17 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 
 			newLen := len(body)
 			newCode := resp.StatusCode
-			classification := ClassifyResult(ctx, newCode, newLen, meta)
+			classification, color := ClassifyResultWithColor(ctx, newCode, newLen, meta)
+
+			// 根据置信度级别使用不同颜色输出
+			hitPrefix := Green
+			if color == "red" {
+				hitPrefix = Red
+			} else if color == "yellow" {
+				hitPrefix = Yellow
+			} else if color == "cyan" {
+				hitPrefix = Cyan
+			}
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -590,7 +600,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 			}
 
 			if debug == 1 {
-				fmt.Printf(Green("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
+				fmt.Printf(hitPrefix("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
 				key := fmt.Sprintf("%s|%d|%d", tc.desc, newLen, newCode)
 				if !seen[key] {
 					seen[key] = true
@@ -604,7 +614,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 					})
 				}
 			} else if (newLen != origLen || newCode != origCode) && newCode != 404 {
-				fmt.Printf(Green("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
+				fmt.Printf(hitPrefix("[+] %s: len=%d code=%d → %s\n"), tc.desc, newLen, newCode, classification)
 				key := fmt.Sprintf("%s|%d|%d", tc.desc, newLen, newCode)
 				if !seen[key] {
 					seen[key] = true
@@ -692,7 +702,16 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 			if isHit {
 				hitIPs = append(hitIPs, ip)
 				ipMeta := ExtractResponseMeta(resp, body)
-				classification := ClassifyResult(ctx, newCode, newLen, ipMeta)
+				classification, color := ClassifyResultWithColor(ctx, newCode, newLen, ipMeta)
+
+				hitPrefix := Green
+				if color == "red" {
+					hitPrefix = Red
+				} else if color == "yellow" {
+					hitPrefix = Yellow
+				} else if color == "cyan" {
+					hitPrefix = Cyan
+				}
 
 				// 构建 curl（携带所有 IP 伪造头）
 				var curlHeaders []string
@@ -701,7 +720,7 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 				}
 				curlCmd := fmt.Sprintf("curl -k -v %s \"%s\"", strings.Join(curlHeaders, " "), targetURL)
 
-				fmt.Printf(Green("[+] 阶段一命中: %s len=%d code=%d → %s\n"), desc, newLen, newCode, classification)
+				fmt.Printf(hitPrefix("[+] 阶段一命中: %s len=%d code=%d → %s\n"), desc, newLen, newCode, classification)
 				phase1Export = append(phase1Export, []string{
 					desc, targetURL,
 					fmt.Sprintf("%d", newLen),

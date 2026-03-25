@@ -201,10 +201,30 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 			len2json := len(bodyjson)
 			codeJson := respjson.StatusCode
-			jsonClassify := ClassifyResult(ctxJson, codeJson, len2json, jsonMeta)
+			jsonClassify, jsonColor := ClassifyResultWithColor(ctxJson, codeJson, len2json, jsonMeta)
+
+			formClassify, formColor := ClassifyResultWithColor(ctxForm, code, len2, formMeta)
 
 			mu.Lock()
 			defer mu.Unlock()
+
+			// 根据置信度级别使用不同颜色输出
+			formPrefix := Green
+			if formColor == "red" {
+				formPrefix = Red
+			} else if formColor == "yellow" {
+				formPrefix = Yellow
+			} else if formColor == "cyan" {
+				formPrefix = Cyan
+			}
+			jsonPrefix := Green
+			if jsonColor == "red" {
+				jsonPrefix = Red
+			} else if jsonColor == "yellow" {
+				jsonPrefix = Yellow
+			} else if jsonColor == "cyan" {
+				jsonPrefix = Cyan
+			}
 
 			// 进度显示
 			if current%50 == 0 || int(current) == total {
@@ -212,7 +232,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			}
 
 			if debug == 1 {
-				fmt.Printf(Green("[+] POST-Form: %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
+				fmt.Printf(formPrefix("[+] POST-Form: %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
 				key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 				if !seen[key] {
 					seen[key] = true
@@ -227,7 +247,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 					})
 				}
 				if len2json != len2 {
-					fmt.Printf(Green("[+] POST-Json: %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
+					fmt.Printf(jsonPrefix("[+] POST-Json: %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true
@@ -244,7 +264,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 				}
 			} else {
 				if (len2 != len1 || code != origCode) && code != 404 {
-					fmt.Printf(Green("[+] POST-Form: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
+					fmt.Printf(formPrefix("[+] POST-Form: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2, code, formClassify)
 					key := fmt.Sprintf("POST-Form|%s|%d|%d", url+value, len2, code)
 					if !seen[key] {
 						seen[key] = true
@@ -261,7 +281,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 				}
 
 				if (len2json != lenjson || codeJson != origCodeJson) && len2json != len2 && codeJson != 404 {
-					fmt.Printf(Green("[+] POST-Json: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
+					fmt.Printf(jsonPrefix("[+] POST-Json: 响应差异 %s len=%d code=%d → %s\n"), url+value, len2json, codeJson, jsonClassify)
 					keyJson := fmt.Sprintf("POST-Json|%s|%d|%d", url+value, len2json, codeJson)
 					if !seen[keyJson] {
 						seen[keyJson] = true

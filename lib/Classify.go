@@ -7,6 +7,27 @@ import (
 	"strings"
 )
 
+// ClassifyResultWithColor 返回判定结果和对应的高亮颜色
+// confidence: 高(red)/中(yellow)/低(green)
+func ClassifyResultWithColor(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta) (string, string) {
+	result := ClassifyResult(ctx, newCode, newLen, meta)
+
+	switch {
+	case strings.Contains(result, "可能绕过(高)"):
+		return result, "red"
+	case strings.Contains(result, "可能绕过(中)"):
+		return result, "yellow"
+	case strings.Contains(result, "重定向(需关注"):
+		return result, "yellow"
+	case strings.Contains(result, "可能绕过(低)"):
+		return result, "green"
+	case strings.Contains(result, "长度差异大"):
+		return result, "cyan"
+	default:
+		return result, ""
+	}
+}
+
 // Baseline 表示一个接口的响应基准特征
 type Baseline struct {
 	Code int
