@@ -191,7 +191,7 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 	// ═══════════════════════════════════════════════════
 	// 规则 2: 重定向分析（区分登录跳转 vs 业务跳转）
 	// ═══════════════════════════════════════════════════
-	if newCode == 302 || newCode == 301 {
+	if newCode == 302 || newCode == 301 || newCode == 307 || newCode == 308 {
 		if meta.Location != "" {
 			lower := strings.ToLower(meta.Location)
 			if !isLoginRedirectTarget(lower) {
@@ -290,6 +290,9 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 
 // adaptiveThreshold 根据响应体大小计算自适应阈值
 func adaptiveThreshold(origLen int) int {
+	if origLen <= 0 {
+		return 0 // 空响应，任何变化都应检测
+	}
 	switch {
 	case origLen >= 500:
 		return maxInt(origLen/5, 50) // 20%，最小 50B
@@ -298,7 +301,7 @@ func adaptiveThreshold(origLen int) int {
 	case origLen >= 20:
 		return maxInt(origLen/2, 10) // 50%，最小 10B
 	default:
-		return 5 // 极小响应固定 5B
+		return maxInt(origLen*3/5, 5) // 60%，最小 5B（更敏感）
 	}
 }
 
@@ -355,6 +358,16 @@ func detectBlockedContent(body []byte) string {
 			`"error_code":401`, `"error_code":403`,
 			`"result":401`, `"result":403`,
 			`"ret":401`, `"ret":403`,
+			// 字符串错误码
+			`"code":"error"`, `"code":"fail"`, `"code":"failed"`,
+			`"status":"error"`, `"status":"fail"`, `"status":"failed"`,
+			`"success":false`, `"success":0`,
+			// 数字错误码（常见企业 API）
+			`"code":10001`, `"code":10002`, `"code":10003`,
+			`"code":20001`, `"code":20002`, `"code":40101`,
+			`"code":50001`, `"code":50002`,
+			// 通用错误码模式
+			`"code":-1`, `"code":-2`,
 		}
 		for _, kw := range blockedKeywords {
 			if strings.Contains(lower, kw) {
@@ -452,17 +465,16 @@ func detectLoginPage(body []byte) bool {
 	// ── HTML 响应: 检查登录表单特征（需要 2+ 个信号） ──
 	if isHTML {
 		score := 0
-		// 强信号: 登录表单
-		formKeywords := []string{
-			"type=\"password\"", "type='password'",
-			"name=\"password\"", "name='password'",
-			"id=\"password\"", "id='password'",
+		// 强信号: 登录表单 - 检查 type= 属性中有 password
+		hasPasswordField := strings.Contains(lower, "type=") && strings.Contains(lower, "password")
+		if hasPasswordField {
+			score += 2
 		}
-		for _, kw := range formKeywords {
-			if strings.Contains(lower, kw) {
-				score += 2
-				break
-			}
+		// 检查 name/id 属性中有 password
+		hasPasswordName := strings.Contains(lower, `name="password"`) || strings.Contains(lower, `name='password'`) ||
+			strings.Contains(lower, `id="password"`) || strings.Contains(lower, `id='password'`)
+		if hasPasswordName {
+			score++
 		}
 		// 中等信号: 登录页面语义
 		loginKeywords := []string{
@@ -503,9 +515,15 @@ func isLoginRedirectTarget(lower string) bool {
 		// 认证相关
 		"login", "signin", "sign-in", "sign_in",
 		"auth", "sso", "cas", "oauth", "saml",
-		"account", "passport",
+		"account", "passport", "credential",
 		// 注册相关
-		"register", "signup",
+		"register", "signup", "join",
+		// 验证/确认
+		"verify", "confirm", "validation",
+		// 会话
+		"session", "logout", "signout",
+		// 安全
+		"security", "protected", "private",
 	}
 	for _, kw := range loginPaths {
 		if strings.Contains(lower, kw) {
@@ -517,7 +535,7 @@ func isLoginRedirectTarget(lower string) bool {
 
 // isBlockedCode 判断状态码是否为典型的鉴权拦截码
 func isBlockedCode(code int) bool {
-	return code == 401 || code == 403 || code == 302 || code == 301 || code == 405
+	return code == 401 || code == 403 || code == 302 || code == 301 || code == 405 || code == 404 || code == 307 || code == 308
 }
 
 // lengthSimilarity 计算两个长度的相似度 (0.0 ~ 1.0)
