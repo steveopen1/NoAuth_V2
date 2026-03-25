@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -158,8 +159,7 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 	noauthLen := ctx.NoAuth.Len
 
 	isLoginPage := detectLoginPage(meta.Body)
-	hasNewSession := meta.SetCookie != "" && !strings.Contains(meta.SetCookie, "deleted")
-	// Header 辅助信号
+	hasNewSession := meta.SetCookie != "" && !strings.Contains(strings.ToLower(meta.SetCookie), "deleted")
 	headerSignals := buildHeaderSignals(meta)
 
 	// ═══════════════════════════════════════════════════
@@ -344,10 +344,14 @@ func detectBlockedContent(body []byte) string {
 	if len(body) == 0 {
 		return ""
 	}
-	lower := strings.ToLower(string(body))
+	trimmed := trimBody(body)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	lower := strings.ToLower(string(trimmed))
 
 	// JSON 格式检测
-	if len(body) > 0 && (body[0] == '{' || body[0] == '[') {
+	if trimmed[0] == '{' || trimmed[0] == '[' {
 		blockedKeywords := []string{
 			`"code":401`, `"code":403`,
 			`"status":401`, `"status":403`,
@@ -414,10 +418,14 @@ func detectBlockedContent(body []byte) string {
 
 // extractBlockedReason 从响应中提取拦截原因
 func extractBlockedReason(lower string) string {
-	if strings.Contains(lower, "401") {
+	// 使用正则精确匹配错误码，避免误匹配 "1401", "2401" 等
+	code401Regex := regexp.MustCompile(`"code":\s*401|"status":\s*401|"code":\s*"401"|"error_code":\s*401`)
+	code403Regex := regexp.MustCompile(`"code":\s*403|"status":\s*403|"code":\s*"403"|"error_code":\s*403`)
+
+	if code401Regex.MatchString(lower) {
 		return "含401状态"
 	}
-	if strings.Contains(lower, "403") {
+	if code403Regex.MatchString(lower) {
 		return "含403状态"
 	}
 	if strings.Contains(lower, "unauthorized") {
@@ -438,12 +446,17 @@ func detectLoginPage(body []byte) bool {
 	if len(body) == 0 {
 		return false
 	}
-	lower := strings.ToLower(string(body))
+	trimmed := trimBody(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+	lower := strings.ToLower(string(trimmed))
 
 	// ── 判断响应类型 ──
 	isHTML := strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype") ||
+		strings.Contains(lower, "<!doctype html") || strings.Contains(lower, "<head") ||
 		strings.Contains(lower, "<form") || strings.Contains(lower, "<body")
-	isJSON := (len(body) > 0 && (body[0] == '{' || body[0] == '['))
+	isJSON := (trimmed[0] == '{' || trimmed[0] == '[')
 
 	// ── JSON 响应: 仅检查强拒绝信号，不检查弱关键词 ──
 	if isJSON {
@@ -695,28 +708,97 @@ func charToLower(b byte) byte {
 	return b
 }
 
+// trimBody 去除 body 前面的空白字符和 BOM
+func trimBody(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	// 跳过 UTF-8 BOM (0xEF 0xBB 0xBF)
+	if len(body) >= 3 && body[0] == 0xEF && body[1] == 0xBB && body[2] == 0xBF {
+		body = body[3:]
+	}
+	// 跳过空白字符
+	i := 0
+	for i < len(body) && (body[i] == ' ' || body[i] == '\t' || body[i] == '\n' || body[i] == '\r') {
+		i++
+	}
+	return body[i:]
+}
+
 // detectWAFSignature 检测响应中是否包含 WAF 特征
 func detectWAFSignature(meta ResponseMeta, body []byte) string {
 	combined := strings.ToLower(string(body)) + strings.ToLower(meta.Server) + strings.ToLower(meta.XPoweredBy)
 
 	wafSignatures := map[string]string{
-		"cloudflare":           "Cloudflare WAF",
-		"cf-ray":               "Cloudflare",
-		"__cfduid":             "Cloudflare",
+		// Cloudflare
+		"cloudflare":      "Cloudflare WAF",
+		"cf-ray":          "Cloudflare",
+		"__cfduid":        "Cloudflare",
+		"cf-cache-status": "Cloudflare",
+		"cf-request-id":   "Cloudflare",
+		// Akamai
 		"akamai":               "Akamai",
 		"akamai-origin":        "Akamai",
 		"x-akamai":             "Akamai",
-		"x-snap":               "Snap Proxy",
-		"x-cc":                 "CacheFly",
-		"incapsula":            "Imperva Incapsula",
-		"incap_":               "Imperva Incapsula",
-		"x-cdn":                "CDN",
-		"x-edge-location":      "Edge CDN",
-		"f5-networks":          "F5 ASM",
-		"bigip":                "F5 BIG-IP",
-		"fortigate":            "FortiGate",
-		"fortiweb":             "FortiWeb",
-		"signal":               "Signal Sciences",
+		"akamai-x-cache":       "Akamai",
+		"akamai-x-get-noncomm": "Akamai",
+		// Imperva Incapsula
+		"incapsula": "Imperva Incapsula",
+		"incap_":    "Imperva Incapsula",
+		// F5
+		"f5-networks": "F5 ASM",
+		"bigip":       "F5 BIG-IP",
+		"x-cnection":  "F5",
+		"x-profile":   "F5",
+		// Fortinet
+		"fortigate": "FortiGate",
+		"fortiweb":  "FortiWeb",
+		// AWS
+		"aws-alb":          "AWS ALB",
+		"aws-waf":          "AWS WAF",
+		"aws-request-id":   "AWS",
+		"x-amz-id":         "AWS S3/CloudFront",
+		"x-amz-request-id": "AWS",
+		// Azure
+		"azure":             "Azure",
+		"x-azure":           "Azure",
+		"x-ec-custom-error": "Azure",
+		// Google Cloud
+		"google": "Google Cloud",
+		"gws":    "Google Web Service",
+		"x-goog": "Google Cloud",
+		// CloudFront
+		"cloudfront": "CloudFront",
+		"x-amz-cf":   "CloudFront",
+		// CDN
+		"x-cdn":           "CDN",
+		"x-edge-location": "Edge CDN",
+		"x-snap":          "Snap Proxy",
+		"x-cc":            "CacheFly",
+		"fastly":          "Fastly",
+		"x-srv":           "Fastly",
+		// 国产 CDN/WAF
+		"aliyun":      "阿里云",
+		"alibaba":     "阿里云",
+		"x-oss":       "阿里云 OSS",
+		"tengine":     "阿里云Tengine",
+		"tencent":     "腾讯云",
+		"x-qcloud":    "腾讯云",
+		"waf":         "WAF",
+		"waf blocked": "WAF拦截",
+		// 其他安全产品
+		"signal":     "Signal Sciences",
+		"sucuri":     "Sucuri",
+		"x-sucuri":   "Sucuri",
+		"denyall":    "DenyAll",
+		"arrowpoint": "Cisco ArrowPoint",
+		"sonicwall":  "SonicWALL",
+		"paloalto":   "Palo Alto",
+		"watchguard": "WatchGuard",
+		"barracuda":  "Barracuda",
+		"imperva":    "Imperva",
+		"datPower":   "DatPower",
+		// 安全响应特征
 		"xsshijacking":         "XSS Protection",
 		"x-ocsp":               "OCSP",
 		"doss protection":      "DDoS Protection",
@@ -728,6 +810,10 @@ func detectWAFSignature(meta ResponseMeta, body []byte) string {
 		"x-content-type":       "Content Type Protection",
 		"x-frame-options":      "Clickjacking Protection",
 		"content-type-options": "MIME Sniffing Protection",
+		// ModSecurity
+		"mod_security": "ModSecurity",
+		"modsecurity":  "ModSecurity",
+		"paranoia":     "ModSecurity",
 	}
 
 	for sig, name := range wafSignatures {
