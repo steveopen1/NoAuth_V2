@@ -25,7 +25,6 @@ var (
 	timeout int
 	r       string
 	m       string
-	trace   bool
 	wayback bool
 	targets string
 	rate    int
@@ -44,7 +43,6 @@ func init() {
 	flag.IntVar(&timeout, "timeout", 15, "HTTP 请求超时时间（秒）")
 	flag.StringVar(&r, "r", "", "数据包文件路径（支持 RAW HTTP 格式和 cURL 格式）")
 	flag.StringVar(&m, "m", "bypass", "fuzz 模式：bypass(401/403绕过) 或 logic(逻辑漏洞测试)")
-	flag.BoolVar(&trace, "trace", false, "显示模块调用链路追踪信息")
 	flag.BoolVar(&wayback, "wayback", false, "查询Wayback Machine历史信息")
 	flag.StringVar(&targets, "targets", "", "批量测试目标文件（每行一个URL）")
 	flag.IntVar(&rate, "rate", 0, "每秒最大请求数（0=无限制）")
@@ -147,9 +145,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	if trace {
-		lib.EnableTrace()
-	}
+	// 默认启用执行链路追踪
+	lib.EnableTrace()
 
 	if wayback {
 		if u == "" {
@@ -268,10 +265,9 @@ func main() {
 	lib.GenerateReport(meta, getSheet, postSheet, headerSheet)
 	lib.TraceReturn("main", "GenerateReport", "report.md")
 
-	if trace {
-		lib.PrintExecutionChain()
-		lib.PrintTraceSummary()
-	}
+	// 打印执行链路汇总
+	lib.PrintExecutionChain()
+	lib.PrintTraceSummary()
 }
 
 func requestFuzzMode() {
