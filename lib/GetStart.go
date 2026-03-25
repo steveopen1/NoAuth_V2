@@ -36,10 +36,6 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 		return result, 0, 0, nil
 	}
 
-	if strings.Contains(string(body), url+auth) {
-		body = []byte(strings.Replace(string(body), url+auth, "", 1))
-	}
-
 	len1 := len(body)
 	origCode := resp.StatusCode
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
@@ -96,11 +92,12 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 				return
 			}
 
-			// 提取响应元数据（在 URL 剥离前，保留原始 body 用于关键词检测）
 			meta := ExtractResponseMeta(resp, body)
 
-			if strings.Contains(string(body), url+value) {
-				body = []byte(strings.Replace(string(body), url+value, "", 1))
+			if strings.Contains(meta.ContentType, "text/html") {
+				if strings.Contains(string(body), url+value) {
+					body = []byte(strings.Replace(string(body), url+value, "", 1))
+				}
 			}
 
 			len2 := len(body)
