@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"noauth/lib"
 	"os"
 	"runtime"
@@ -28,6 +29,7 @@ var (
 	wayback bool
 	targets string
 	rate    int
+	finger  bool
 )
 
 func init() {
@@ -46,6 +48,7 @@ func init() {
 	flag.BoolVar(&wayback, "wayback", false, "查询Wayback Machine历史信息")
 	flag.StringVar(&targets, "targets", "", "批量测试目标文件（每行一个URL）")
 	flag.IntVar(&rate, "rate", 0, "每秒最大请求数（0=无限制）")
+	flag.BoolVar(&finger, "finger", false, "启用WAF/CDN指纹识别")
 	flag.Usage = usage
 }
 
@@ -125,6 +128,24 @@ func main() {
 		}
 		lib.InitHTTPClient(proxy, timeout)
 		lib.PrintWaybackReport(u)
+		os.Exit(0)
+	}
+
+	if finger {
+		if u == "" {
+			fmt.Println(lib.Red("[-] -finger 需要配合 -u 参数使用"))
+			os.Exit(0)
+		}
+		lib.InitHTTPClient(proxy, timeout)
+		baseURL := strings.TrimSuffix(u, "/")
+		resp, err := lib.HttpClient.Get(baseURL)
+		if err != nil {
+			fmt.Printf(lib.Red("[-] 请求目标失败: %s\n"), err)
+			os.Exit(0)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		lib.PrintFingerprintReport(u, resp, body)
 		os.Exit(0)
 	}
 
