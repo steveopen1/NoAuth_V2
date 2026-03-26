@@ -81,12 +81,14 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 	// 构建双基线判定上下文（Form 和 Json 各自有独立的 Auth 基线）
 	ctxForm := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authFormMeta},
-		NoAuth: noauthBaseline,
+		Auth:           Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authFormMeta},
+		NoAuth:         noauthBaseline,
+		BaselineTimeMs: authFormMeta.ResponseTimeMs,
 	}
 	ctxJson := ClassifyContext{
-		Auth:   Baseline{Code: origCodeJson, Len: lenjson, Body: sampleBody(bodyjson, 8192), Meta: authJsonMeta},
-		NoAuth: noauthBaseline,
+		Auth:           Baseline{Code: origCodeJson, Len: lenjson, Body: sampleBody(bodyjson, 8192), Meta: authJsonMeta},
+		NoAuth:         noauthBaseline,
+		BaselineTimeMs: authJsonMeta.ResponseTimeMs,
 	}
 
 	// 确定 POST 测试的 payload 列表

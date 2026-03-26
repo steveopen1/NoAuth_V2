@@ -58,8 +58,9 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 	origMeta := ExtractResponseMeta(resp, body)
 	baseline := Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: origMeta}
 	ctx := ClassifyContext{
-		Auth:   baseline,
-		NoAuth: Baseline{},
+		Auth:           baseline,
+		NoAuth:         Baseline{},
+		BaselineTimeMs: origMeta.ResponseTimeMs,
 	}
 
 	var wg sync.WaitGroup
