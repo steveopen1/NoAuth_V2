@@ -210,14 +210,39 @@ func main() {
 	headerSheet := lib.HeaderBypassStart(u, n, a, t, debug, noauthBaseline)
 	lib.TraceReturn("main", "HeaderBypassStart", "完成")
 
-	// 统一导出到一个 Excel（三个 Sheet）
+	// 阶段四: 专业绕过测试 (JWT/GraphQL/OAuth2/SAML/gRPC/Session)
+	lib.TraceInfo("main", "四阶段测试", "开始执行")
+	lib.TraceCall("main", "SpecializedBypassStart", "阶段四: 专业绕过测试")
+	specializedResult := lib.SpecializedBypassStart(u, n, a, t, debug, noauthBaseline)
+	lib.TraceReturn("main", "SpecializedBypassStart", "完成")
+
+	// 统一导出到一个 Excel（四个阶段 Sheet）
 	lib.TraceCall("main", "ExportAllToExcel", "导出 Excel 格式")
-	lib.ExportAllToExcel(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+	allSheets := []lib.SheetData{getSheet, postSheet, headerSheet}
+	if len(specializedResult.JWTSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.JWTSheet)
+	}
+	if len(specializedResult.GraphQLSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.GraphQLSheet)
+	}
+	if len(specializedResult.OAuthSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.OAuthSheet)
+	}
+	if len(specializedResult.SAMLSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.SAMLSheet)
+	}
+	if len(specializedResult.GRPCSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.GRPCSheet)
+	}
+	if len(specializedResult.SessionSheet.Data) > 0 {
+		allSheets = append(allSheets, specializedResult.SessionSheet)
+	}
+	lib.ExportAllToExcel(u, allSheets)
 	lib.TraceReturn("main", "ExportAllToExcel", "results.xlsx")
 
 	// 同时导出 JSON 格式便于自动化分析
 	lib.TraceCall("main", "ExportAllToJSON", "导出 JSON 格式")
-	lib.ExportAllToJSON(u, []lib.SheetData{getSheet, postSheet, headerSheet})
+	lib.ExportAllToJSON(u, allSheets)
 	lib.TraceReturn("main", "ExportAllToJSON", "results.json")
 
 	// 生成测试报告

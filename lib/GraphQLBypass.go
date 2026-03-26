@@ -28,6 +28,10 @@ func BuildGraphQLBypassCases(baseURL string) []GraphQLBypassCase {
 		"/query",
 		"/graphql/v1",
 		"/graphql/v2",
+		"/api/gql",
+		"/gql",
+		"/graphiql",
+		"/playground",
 	}
 
 	introspectionQueries := buildIntrospectionQueries()
@@ -84,7 +88,8 @@ func BuildGraphQLBypassCases(baseURL string) []GraphQLBypassCase {
 
 		batchQueries := []string{
 			`{"query":"{ a: users { id } }{ b: users { email } }"}`,
-			`[{"query":"{ users { id } }"},{"query":"{ users { email } }"}]`,
+			`[{"query":"{ users { id } "},{"query":"{ users { email } }"}]`,
+			`{"query":"__schema { types { name } } __type(name: \"User\") { fields { name } }"}`,
 		}
 		for i, q := range batchQueries {
 			cases = append(cases, GraphQLBypassCase{
@@ -102,6 +107,9 @@ func BuildGraphQLBypassCases(baseURL string) []GraphQLBypassCase {
 			"posts", "post", "articles", "article",
 			"products", "product", "orders", "order",
 			"customers", "customer", "payments", "payment",
+			"admins", "admin", "roles", "permissions",
+			"secrets", "keys", "credentials", "config",
+			"files", "documents", "settings", "profiles",
 		}
 		for _, field := range possibleQueryFields {
 			cases = append(cases, GraphQLBypassCase{
@@ -120,6 +128,14 @@ func BuildGraphQLBypassCases(baseURL string) []GraphQLBypassCase {
 				contentType: "application/json",
 				desc:        fmt.Sprintf("GraphQL[query %s.email/password]", field),
 			})
+			cases = append(cases, GraphQLBypassCase{
+				method:      "POST",
+				url:         url,
+				headers:     map[string]string{},
+				body:        fmt.Sprintf(`{"query":"{ %s { * } }"}`, field),
+				contentType: "application/json",
+				desc:        fmt.Sprintf("GraphQL[query %s.*]", field),
+			})
 		}
 
 		cases = append(cases, GraphQLBypassCase{
@@ -130,6 +146,54 @@ func BuildGraphQLBypassCases(baseURL string) []GraphQLBypassCase {
 			contentType: "application/json",
 			desc:        "GraphQL[introspection full query]",
 		})
+
+		altIntrospectionQueries := []string{
+			`{"query":"{ introspection { types { name } } }"}`,
+			`{"query":"{ _introspection { schema { types { name } } } }"}`,
+			`{"query":"{ __type { name fields { name } } }"}`,
+		}
+		for i, q := range altIntrospectionQueries {
+			cases = append(cases, GraphQLBypassCase{
+				method:      "POST",
+				url:         url,
+				headers:     map[string]string{},
+				body:        q,
+				contentType: "application/json",
+				desc:        fmt.Sprintf("GraphQL[alt introspection %d]", i+1),
+			})
+		}
+
+		unionTypes := []string{
+			`{"query":"{ __type(name: \"User\") { possibleTypes { name } } }"}`,
+			`{"query":"{ __union { name kind possibleTypes { name } } }"}`,
+		}
+		for i, q := range unionTypes {
+			cases = append(cases, GraphQLBypassCase{
+				method:      "POST",
+				url:         url,
+				headers:     map[string]string{},
+				body:        q,
+				contentType: "application/json",
+				desc:        fmt.Sprintf("GraphQL[union query %d]", i+1),
+			})
+		}
+
+		contentTypeVariants := []string{
+			"application/json",
+			"application/graphql",
+			"text/plain",
+			"application/x-www-form-urlencoded",
+		}
+		for _, ct := range contentTypeVariants {
+			cases = append(cases, GraphQLBypassCase{
+				method:      "POST",
+				url:         url,
+				headers:     map[string]string{},
+				body:        `{"query":"{ __typename }"}`,
+				contentType: ct,
+				desc:        fmt.Sprintf("GraphQL[content-type %s]", ct),
+			})
+		}
 	}
 
 	return cases

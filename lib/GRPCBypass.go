@@ -29,37 +29,44 @@ func BuildGRPCBypassCases(baseURL string) []GRPCBypassCase {
 		"/api/grpc/",
 		"/h2c/",
 		"/h2c.api/",
+		"/grpc.v1/",
+		"/api/v1/grpc/",
+		"/h2",
+		"/grpc-web/",
 	}
 
 	for _, endpoint := range grpcEndpoints {
 		fullURL := strings.TrimSuffix(baseURL, "/") + endpoint
 
-		cases = append(cases, GRPCBypassCase{
-			method:   "POST",
-			url:      fullURL,
-			headers:  map[string]string{"Content-Type": "application/grpc"},
-			body:     "",
-			protocol: "h2c",
-			desc:     "gRPC[via h2c]",
-		})
+		contentTypes := []string{
+			"application/grpc",
+			"application/grpc+json",
+			"application/grpc+proto",
+			"application/proto",
+			"application/octet-stream",
+		}
+		for _, ct := range contentTypes {
+			cases = append(cases, GRPCBypassCase{
+				method:   "POST",
+				url:      fullURL,
+				headers:  map[string]string{"Content-Type": ct},
+				body:     "",
+				protocol: "h2c",
+				desc:     fmt.Sprintf("gRPC[Content-Type: %s]", ct),
+			})
+		}
 
-		cases = append(cases, GRPCBypassCase{
-			method:   "POST",
-			url:      fullURL,
-			headers:  map[string]string{"Content-Type": "application/grpc+json"},
-			body:     "",
-			protocol: "h2c",
-			desc:     "gRPC[application/grpc+json]",
-		})
-
-		cases = append(cases, GRPCBypassCase{
-			method:   "POST",
-			url:      fullURL,
-			headers:  map[string]string{"Content-Type": "application/proto"},
-			body:     "",
-			protocol: "h2c",
-			desc:     "gRPC[application/proto]",
-		})
+		methods := []string{"POST", "GET", "PUT", "DELETE", "PATCH", "PRI"}
+		for _, method := range methods {
+			cases = append(cases, GRPCBypassCase{
+				method:   method,
+				url:      fullURL,
+				headers:  map[string]string{"Content-Type": "application/grpc"},
+				body:     "",
+				protocol: "h2c",
+				desc:     fmt.Sprintf("gRPC[method: %s]", method),
+			})
+		}
 
 		cases = append(cases, GRPCBypassCase{
 			method:   "PRI",
@@ -71,22 +78,63 @@ func BuildGRPCBypassCases(baseURL string) []GRPCBypassCase {
 		})
 	}
 
-	cases = append(cases, GRPCBypassCase{
-		method:   "GET",
-		url:      baseURL,
-		headers:  map[string]string{"Upgrade": "h2c"},
-		body:     "",
-		protocol: "http/1.1",
-		desc:     "HTTP2[Upgrade: h2c]",
-	})
+	protocolUpgrade := []string{
+		"h2c",
+		"h2",
+		"HTTP/2",
+		"HTTP/2.0",
+	}
+	for _, upgrade := range protocolUpgrade {
+		cases = append(cases, GRPCBypassCase{
+			method:   "GET",
+			url:      baseURL,
+			headers:  map[string]string{"Upgrade": upgrade},
+			body:     "",
+			protocol: "http/1.1",
+			desc:     fmt.Sprintf("HTTP2[Upgrade: %s]", upgrade),
+		})
+	}
+
+	http2SettingsValues := []string{
+		"AAMAAABkAARAAAAAAAIAAAAA==",
+		"AAUAAABkAARAAAAAAAIAAAAA==",
+		"AAMAAABkAARAAAAAAAGAAAAAQ==",
+		"",
+	}
+	for i, settings := range http2SettingsValues {
+		headers := map[string]string{}
+		if settings != "" {
+			headers["HTTP2-Settings"] = settings
+		}
+		cases = append(cases, GRPCBypassCase{
+			method:   "GET",
+			url:      baseURL,
+			headers:  headers,
+			body:     "",
+			protocol: "http/1.1",
+			desc:     fmt.Sprintf("HTTP2[HTTP2-Settings %d]", i+1),
+		})
+	}
+
+	teHeaderValues := []string{"trailers", "trailers, deflate", "trailers, gzip", "deflate, trailers"}
+	for _, te := range teHeaderValues {
+		cases = append(cases, GRPCBypassCase{
+			method:   "POST",
+			url:      baseURL,
+			headers:  map[string]string{"TE": te, "Content-Type": "application/grpc"},
+			body:     "",
+			protocol: "h2c",
+			desc:     fmt.Sprintf("gRPC[TE: %s]", te),
+		})
+	}
 
 	cases = append(cases, GRPCBypassCase{
 		method:   "GET",
 		url:      baseURL,
-		headers:  map[string]string{"HTTP2-Settings": base64.StdEncoding.EncodeToString([]byte("AAMAAABkAARAAAAAAAIAAAAA=="))},
+		headers:  map[string]string{"Upgrade": "h2c", "HTTP2-Settings": "AAMAAABkAARAAAAAAAIAAAAA=="},
 		body:     "",
 		protocol: "http/1.1",
-		desc:     "HTTP2[HTTP2-Settings header]",
+		desc:     "HTTP2[Upgrade + HTTP2-Settings combo]",
 	})
 
 	cases = append(cases, buildHTTP2伪装Cases(baseURL)...)
