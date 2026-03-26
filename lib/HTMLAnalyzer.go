@@ -26,6 +26,16 @@ type FormInfo struct {
 	HasEmail    bool
 }
 
+var (
+	titleRegex    = regexp.MustCompile(`(?i)<title[^>]*>([^<]+)</title>`)
+	formRegex     = regexp.MustCompile(`(?i)<form[^>]*>`)
+	actionRegex   = regexp.MustCompile(`(?i)action\s*=\s*["']?([^"'\s>]+)`)
+	methodRegex   = regexp.MustCompile(`(?i)method\s*=\s*["']?([^"'\s>]+)`)
+	inputRegex    = regexp.MustCompile(`(?i)<input[^>]*>`)
+	nameRegex     = regexp.MustCompile(`(?i)name\s*=\s*["']?([^"'\s>]+)`)
+	passwordRegex = regexp.MustCompile(`(?i)<input[^>]*type\s*=\s*["']?password["']?[^>]*>`)
+)
+
 func NewHTMLAnalyzer() *HTMLAnalyzer {
 	return &HTMLAnalyzer{}
 }
@@ -51,7 +61,6 @@ func (h *HTMLAnalyzer) Analyze(body []byte) HTMLStructure {
 }
 
 func (h *HTMLAnalyzer) extractTitle(body []byte) string {
-	titleRegex := regexp.MustCompile(`(?i)<title[^>]*>([^<]+)</title>`)
 	matches := titleRegex.FindSubmatch(body)
 	if len(matches) > 1 {
 		return strings.TrimSpace(string(matches[1]))
@@ -60,7 +69,6 @@ func (h *HTMLAnalyzer) extractTitle(body []byte) string {
 }
 
 func (h *HTMLAnalyzer) extractForms(body []byte) []FormInfo {
-	formRegex := regexp.MustCompile(`(?i)<form[^>]*>`)
 	forms := formRegex.FindAllIndex(body, -1)
 
 	var formInfos []FormInfo
@@ -74,12 +82,10 @@ func (h *HTMLAnalyzer) extractForms(body []byte) []FormInfo {
 		formContent := body[formStart:formEnd]
 		formInfo := FormInfo{}
 
-		actionRegex := regexp.MustCompile(`(?i)action\s*=\s*["']?([^"'\s>]+)`)
 		if actionMatch := actionRegex.FindSubmatch(formContent); len(actionMatch) > 1 {
 			formInfo.Action = string(actionMatch[1])
 		}
 
-		methodRegex := regexp.MustCompile(`(?i)method\s*=\s*["']?([^"'\s>]+)`)
 		if methodMatch := methodRegex.FindSubmatch(formContent); len(methodMatch) > 1 {
 			formInfo.Method = strings.ToUpper(string(methodMatch[1]))
 		}
@@ -95,12 +101,10 @@ func (h *HTMLAnalyzer) extractForms(body []byte) []FormInfo {
 }
 
 func (h *HTMLAnalyzer) hasInputWithName(content []byte, names []string) bool {
-	inputRegex := regexp.MustCompile(`(?i)<input[^>]*>`)
 	inputs := inputRegex.FindAll(content, -1)
 
 	for _, input := range inputs {
 		for _, name := range names {
-			nameRegex := regexp.MustCompile(`(?i)name\s*=\s*["']?([^"'\s>]+)`)
 			if match := nameRegex.FindSubmatch(input); len(match) > 1 {
 				inputName := strings.ToLower(string(match[1]))
 				if strings.Contains(inputName, name) {
@@ -113,7 +117,6 @@ func (h *HTMLAnalyzer) hasInputWithName(content []byte, names []string) bool {
 }
 
 func (h *HTMLAnalyzer) hasPasswordField(body []byte) bool {
-	passwordRegex := regexp.MustCompile(`(?i)<input[^>]*type\s*=\s*["']?password["']?[^>]*>`)
 	return passwordRegex.Match(body)
 }
 
