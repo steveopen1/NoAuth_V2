@@ -23,11 +23,15 @@ type SAMLBypassCase struct {
 }
 
 type SAMLResponse struct {
-	XMLName    xml.Name  `xml:"Response"`
-	ID         string    `xml:"ID,attr"`
-	Issuer     string    `xml:"Issuer"`
-	Assertion  Assertion `xml:"Assertion"`
-	StatusCode string    `xml:"Status>StatusCode,attr"`
+	XMLName   xml.Name  `xml:"Response"`
+	ID        string    `xml:"ID,attr"`
+	Issuer    string    `xml:"Issuer"`
+	Assertion Assertion `xml:"Assertion"`
+	Status    Status    `xml:"Status"`
+}
+
+type Status struct {
+	StatusCode string `xml:"StatusCode,attr"`
 }
 
 type Assertion struct {
@@ -43,14 +47,22 @@ type Subject struct {
 }
 
 type Confirmation struct {
-	Method         string `xml:"Method,attr"`
-	SubjectLocalID string `xml:"SubjectConfirmationData>NotOnOrAfter,attr"`
+	Method      string                  `xml:"Method,attr"`
+	SubjectData SubjectConfirmationData `xml:"SubjectConfirmationData"`
+}
+
+type SubjectConfirmationData struct {
+	NotOnOrAfter string `xml:"NotOnOrAfter,attr"`
 }
 
 type Conditions struct {
-	NotBefore    string `xml:"NotBefore,attr"`
-	NotOnOrAfter string `xml:"NotOnOrAfter,attr"`
-	Audience     string `xml:"AudienceRestriction>Audience"`
+	NotBefore    string              `xml:"NotBefore,attr"`
+	NotOnOrAfter string              `xml:"NotOnOrAfter,attr"`
+	Audience     AudienceRestriction `xml:"AudienceRestriction"`
+}
+
+type AudienceRestriction struct {
+	Audience string `xml:"Audience"`
 }
 
 type AttributeStatement struct {

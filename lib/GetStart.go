@@ -19,9 +19,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	fmt.Println(Blue("[+] GET poc 开始测试"))
 
-	if strings.HasSuffix(url, "/") {
-		url = strings.TrimSuffix(url, "/")
-	}
+	url = strings.TrimSuffix(url, "/")
 
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {

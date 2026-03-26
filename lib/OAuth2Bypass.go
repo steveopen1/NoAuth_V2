@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	urlpkg "net/url"
 	"strings"
 )
@@ -38,7 +37,7 @@ func BuildOAuth2BypassCases(baseURL string) []OAuth2BypassCase {
 
 		cases = append(cases, OAuth2BypassCase{
 			method: "GET",
-			url:    fullURL + "?response_type=code&client_id=test&redirect_uri=" + url.QueryEscape(redirectURI),
+			url:    fullURL + "?response_type=code&client_id=test&redirect_uri=" + urlpkg.QueryEscape(redirectURI),
 			desc:   "OAuth2[redirect_uri bypass - external domain]",
 		})
 
@@ -50,7 +49,7 @@ func BuildOAuth2BypassCases(baseURL string) []OAuth2BypassCase {
 
 		cases = append(cases, OAuth2BypassCase{
 			method: "GET",
-			url:    fullURL + "?response_type=token&client_id=test&redirect_uri=" + url.QueryEscape(redirectURI),
+			url:    fullURL + "?response_type=token&client_id=test&redirect_uri=" + urlpkg.QueryEscape(redirectURI),
 			desc:   "OAuth2[implicit flow redirect]",
 		})
 
@@ -62,7 +61,7 @@ func BuildOAuth2BypassCases(baseURL string) []OAuth2BypassCase {
 		for _, uri := range localhostURIs {
 			cases = append(cases, OAuth2BypassCase{
 				method: "GET",
-				url:    fullURL + "?response_type=code&client_id=test&redirect_uri=" + url.QueryEscape(uri),
+				url:    fullURL + "?response_type=code&client_id=test&redirect_uri=" + urlpkg.QueryEscape(uri),
 				desc:   fmt.Sprintf("OAuth2[redirect_uri %s]", uri),
 			})
 		}
@@ -100,7 +99,7 @@ func BuildOAuth2BypassCases(baseURL string) []OAuth2BypassCase {
 		for _, state := range stateBypasses {
 			cases = append(cases, OAuth2BypassCase{
 				method: "GET",
-				url:    fullURL + "?response_type=code&client_id=test&state=" + state + "&redirect_uri=" + url.QueryEscape(redirectURI),
+				url:    fullURL + "?response_type=code&client_id=test&state=" + state + "&redirect_uri=" + urlpkg.QueryEscape(redirectURI),
 				desc:   fmt.Sprintf("OAuth2[state=%s]", state),
 			})
 		}
@@ -114,7 +113,7 @@ func BuildOAuth2BypassCases(baseURL string) []OAuth2BypassCase {
 		for _, scope := range scopeBypasses {
 			cases = append(cases, OAuth2BypassCase{
 				method: "GET",
-				url:    fullURL + "?response_type=code&client_id=test&scope=" + url.QueryEscape(scope) + "&redirect_uri=" + url.QueryEscape(redirectURI),
+				url:    fullURL + "?response_type=code&client_id=test&scope=" + urlpkg.QueryEscape(scope) + "&redirect_uri=" + urlpkg.QueryEscape(redirectURI),
 				desc:   fmt.Sprintf("OAuth2[scope=%s]", scope),
 			})
 		}
@@ -262,11 +261,7 @@ func detectPKCEBypass(authorizationURL string) bool {
 	}
 	defer resp2.Body.Close()
 
-	if resp.StatusCode != resp2.StatusCode {
-		return true
-	}
-
-	return false
+	return resp.StatusCode != resp2.StatusCode
 }
 
 type OAuth2FlowTest struct {
@@ -281,7 +276,7 @@ func (f *OAuth2FlowTest) TestAuthorizationCodeFlow() (bool, string) {
 	authURL := f.AuthorizationEndpoint + "?" +
 		"response_type=code" +
 		"&client_id=" + f.ClientID +
-		"&redirect_uri=" + url.QueryEscape(f.RedirectURI) +
+		"&redirect_uri=" + urlpkg.QueryEscape(f.RedirectURI) +
 		"&scope=openid profile"
 
 	resp, err := HttpClient.Get(authURL)
@@ -294,7 +289,7 @@ func (f *OAuth2FlowTest) TestAuthorizationCodeFlow() (bool, string) {
 	if code == "" {
 		location := resp.Header.Get("Location")
 		if location != "" {
-			u, err := url.Parse(location)
+			u, err := urlpkg.Parse(location)
 			if err == nil {
 				code = u.Query().Get("code")
 			}

@@ -218,9 +218,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 
 	fmt.Println(Blue("[+] Header Bypass poc 开始测试"))
 
-	if strings.HasSuffix(url, "/") {
-		url = strings.TrimSuffix(url, "/")
-	}
+	url = strings.TrimSuffix(url, "/")
 
 	// 先获取原始响应作为基准
 	resp, err := HttpClient.Get(url + auth)

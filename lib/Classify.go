@@ -648,13 +648,6 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func truncateBody(body []byte, maxLen int) []byte {
-	if len(body) <= maxLen {
-		return body
-	}
-	return body[:maxLen]
-}
-
 func truncateStr(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s

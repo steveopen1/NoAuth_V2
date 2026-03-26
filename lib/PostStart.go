@@ -23,9 +23,7 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 	fmt.Println(Blue("[+] POST(Form-data 和 Json) poc 开始测试"))
 
-	if strings.HasSuffix(url, "/") {
-		url = strings.TrimSuffix(url, "/")
-	}
+	url = strings.TrimSuffix(url, "/")
 
 	resp, err := HttpClient.Post(url+auth, "application/x-www-form-urlencoded", bytes.NewBuffer([]byte{}))
 	respjson, errjson := HttpClient.Post(url+auth, "application/json", bytes.NewBuffer([]byte("{}")))
@@ -196,7 +194,6 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 			len2 := len(body)
 			code := resp.StatusCode
-			formClassify := ClassifyResult(ctxForm, code, len2, formMeta)
 
 			if strings.Contains(jsonMeta.ContentType, "text/html") {
 				if strings.Contains(string(bodyjson), url+value) {

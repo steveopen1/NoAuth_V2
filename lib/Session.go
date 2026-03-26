@@ -130,10 +130,7 @@ func GetSessionProgress(targetURL string) string {
 		return "无历史会话"
 	}
 
-	var parts []string
-	for _, phase := range session.CompletedPhases {
-		parts = append(parts, phase)
-	}
+	parts := append([]string(nil), session.CompletedPhases...)
 
 	if len(parts) == 0 {
 		return "会话存在但无阶段记录"

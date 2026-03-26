@@ -55,7 +55,7 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	if meta.Proxy != "" {
 		sb.WriteString(fmt.Sprintf("| 代理 | `%s` |\n", meta.Proxy))
 	}
-	sb.WriteString(fmt.Sprintf("| 判定引擎 | 双基线智能判定 v2（比例阈值 + 内容分析 + 置信度） |\n"))
+	sb.WriteString("| 判定引擎 | 双基线智能判定 v2（比例阈值 + 内容分析 + 置信度） |\n")
 	sb.WriteString(fmt.Sprintf("| 测试时间 | %s |\n", time.Now().Format("2006-01-02 15:04:05")))
 	sb.WriteString("\n")
 

@@ -206,7 +206,7 @@ func DetectFingerprint(resp *http.Response, body []byte) []Fingerprint {
 		}
 
 		for _, cookie := range sig.Cookies {
-			if strings.Contains(bodyLower, strings.ToLower(cookie)) || strings.Contains(bodyLower, strings.ToLower(cookie)) {
+			if strings.Contains(bodyLower, strings.ToLower(cookie)) {
 				score += 1
 				evidence += fmt.Sprintf("Cookie[%s] ", cookie)
 			}
@@ -246,16 +246,13 @@ func PrintFingerprintReport(targetURL string, resp *http.Response, body []byte) 
 	} else {
 		fmt.Printf("  %s[+] 检测到 %d 个可能的指纹:%s\n", GreenStyle(""), len(fingerprints), ResetStyle())
 		for _, fp := range fingerprints {
-			confidenceBadge := fp.Confidence
 			if fp.Confidence == "high" {
-				confidenceBadge = GreenStyle("高")
+				fmt.Printf("\n  [%s] %s (置信度: %s)\n", fp.Name, GreenStyle("高"), fp.Confidence)
 			} else if fp.Confidence == "medium" {
-				confidenceBadge = YellowStyle("中")
+				fmt.Printf("\n  [%s] %s (置信度: %s)\n", fp.Name, YellowStyle("中"), fp.Confidence)
 			} else {
-				confidenceBadge = RedStyle("低")
+				fmt.Printf("\n  [%s] %s (置信度: %s)\n", fp.Name, RedStyle("低"), fp.Confidence)
 			}
-
-			fmt.Printf("\n  [%s] %s (置信度: %s)\n", fp.Name, confidenceBadge, confidenceBadge)
 			fmt.Printf("     证据: %s\n", fp.Evidence)
 		}
 	}
