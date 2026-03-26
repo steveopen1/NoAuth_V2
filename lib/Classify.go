@@ -9,9 +9,10 @@ import (
 )
 
 // 预编译的正则表达式，避免在热路径中重复编译
+// 使用 \b 边界匹配防止误匹配 "1401", "2401" 等
 var (
-	code401Regex = regexp.MustCompile(`"code":\s*401|"status":\s*401|"code":\s*"401"|"error_code":\s*401`)
-	code403Regex = regexp.MustCompile(`"code":\s*403|"status":\s*403|"code":\s*"403"|"error_code":\s*403`)
+	code401Regex = regexp.MustCompile(`(?m)\b"code":\s*401\b|\b"status":\s*401\b|\b"code":\s*"401"\b|\b"error_code":\s*401\b`)
+	code403Regex = regexp.MustCompile(`(?m)\b"code":\s*403\b|\b"status":\s*403\b|\b"code":\s*"403"\b|\b"error_code":\s*403\b`)
 )
 
 // ClassifyResultWithColor 返回判定结果和对应的高亮颜色
@@ -48,9 +49,11 @@ type Baseline struct {
 // ClassifyContext 双基线判定上下文
 // Auth: 鉴权接口的原始响应（预期被拦截）
 // NoAuth: 无鉴权接口的响应（预期正常可访问，作为正向基准）
+// BaselineTimeMs: 原始鉴权接口的响应时间（毫秒），用于时序异常检测
 type ClassifyContext struct {
-	Auth   Baseline
-	NoAuth Baseline
+	Auth           Baseline
+	NoAuth         Baseline
+	BaselineTimeMs int64
 }
 
 // ResponseMeta 响应元数据（扩展到 Header 分析）
@@ -170,6 +173,7 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 	isLoginPage := detectLoginPage(meta.Body)
 	hasNewSession := meta.SetCookie != "" && !strings.Contains(strings.ToLower(meta.SetCookie), "deleted")
 	headerSignals := buildHeaderSignals(meta)
+	timeSignal := detectResponseTimeAnomaly(meta.ResponseTimeMs, ctx.BaselineTimeMs)
 
 	// ═══════════════════════════════════════════════════
 	// 规则 1: 状态码从拦截变为 200（最强绕过信号）
@@ -187,14 +191,14 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 			combinedSim := lenSim*0.4 + bodySim*0.6
 
 			if combinedSim > 0.85 && !isLoginPage {
-				return "可能绕过(高)" + headerSignals
+				return "可能绕过(高)" + headerSignals + timeSignal
 			}
 			if combinedSim > 0.65 && !isLoginPage {
-				return "可能绕过(中)" + headerSignals
+				return "可能绕过(中)" + headerSignals + timeSignal
 			}
 			// 如果长度相似度高但语义不同，也要标记
 			if lenSim > 0.9 && bodySim < 0.5 && !isLoginPage {
-				return "可能绕过(中)[长度相似但内容异常]" + headerSignals
+				return "可能绕过(中)[长度相似但内容异常]" + headerSignals + timeSignal
 			}
 		}
 		// 没有 noauth 基线或不够相似
@@ -203,9 +207,9 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 		}
 		// 有新 session cookie 是强信号
 		if hasNewSession {
-			return "可能绕过(中)" + headerSignals
+			return "可能绕过(中)" + headerSignals + timeSignal
 		}
-		return "可能绕过(中)" + headerSignals
+		return "可能绕过(中)" + headerSignals + timeSignal
 	}
 
 	// ═══════════════════════════════════════════════════
@@ -263,14 +267,14 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 				// 综合相似度
 				combinedSim := lenSimToNoAuth*0.4 + bodySimToNoAuth*0.6
 				if diffToNoAuth < diff && combinedSim > 0.7 {
-					return "长度差异大(高)" + headerSignals
+					return "长度差异大(高)" + headerSignals + timeSignal
 				}
 			}
 			// 如果语义更接近原始鉴权页面（可能被拦截了真实内容）
 			if bodySimToAuth > 0.8 {
-				return "长度差异大(内容相似原始)" + headerSignals
+				return "长度差异大(内容相似原始)" + headerSignals + timeSignal
 			}
-			return "长度差异大(中)" + headerSignals
+			return "长度差异大(中)" + headerSignals + timeSignal
 		}
 
 		// 长度差异小，但检查 noauth 相似度（交叉验证）
@@ -282,7 +286,7 @@ func ClassifyResult(ctx ClassifyContext, newCode, newLen int, meta ResponseMeta)
 			combinedSimToAuth := lenSimToAuth*0.4 + bodySimToAuth*0.6
 			// 如果响应更接近 noauth 而不是 auth，即使长度差异小也标记
 			if combinedSimToNoAuth > 0.85 && combinedSimToAuth < 0.7 && !isLoginPage {
-				return "长度差异小(疑似绕过)" + headerSignals
+				return "长度差异小(疑似绕过)" + headerSignals + timeSignal
 			}
 		}
 		return "长度差异小"

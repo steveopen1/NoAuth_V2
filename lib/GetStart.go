@@ -44,8 +44,9 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
-		Auth:   Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authMeta},
-		NoAuth: noauthBaseline,
+		Auth:           Baseline{Code: origCode, Len: len1, Body: sampleBody(body, 8192), Meta: authMeta},
+		NoAuth:         noauthBaseline,
+		BaselineTimeMs: authMeta.ResponseTimeMs,
 	}
 
 	list := poc.Summary(noauth, auth)
