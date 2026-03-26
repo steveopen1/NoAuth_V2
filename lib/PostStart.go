@@ -28,41 +28,34 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 	resp, err := HttpClient.Post(url+auth, "application/x-www-form-urlencoded", bytes.NewBuffer([]byte{}))
 	respjson, errjson := HttpClient.Post(url+auth, "application/json", bytes.NewBuffer([]byte("{}")))
 
-	if err != nil {
-		fmt.Printf(Red("[-] POST 请求原始鉴权接口失败: %s\n"), err)
+	defer func() {
 		if resp != nil {
 			resp.Body.Close()
 		}
 		if respjson != nil {
 			respjson.Body.Close()
 		}
+	}()
+
+	if err != nil {
+		fmt.Printf(Red("[-] POST 请求原始鉴权接口失败: %s\n"), err)
 		return result
 	}
-	defer resp.Body.Close()
 
 	if errjson != nil {
 		fmt.Printf(Red("[-] POST-Json 请求原始鉴权接口失败: %s\n"), errjson)
-		resp.Body.Close()
-		if respjson != nil {
-			respjson.Body.Close()
-		}
 		return result
 	}
-	defer respjson.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
-		resp.Body.Close()
-		respjson.Body.Close()
 		return result
 	}
 
 	bodyjson, errjson := io.ReadAll(respjson.Body)
 	if errjson != nil {
 		fmt.Printf(Red("[-] 读取 Json 响应体失败: %s\n"), errjson)
-		resp.Body.Close()
-		respjson.Body.Close()
 		return result
 	}
 
@@ -397,12 +390,18 @@ func selectPostPayloads(url string, allPayloads, getHitPayloads []string,
 
 // spreadSample 从 [0, total) 中均匀取 count 个索引
 func spreadSample(total, count int) []int {
+	if count <= 0 {
+		return nil
+	}
 	if count >= total {
 		indices := make([]int, total)
 		for i := range indices {
 			indices[i] = i
 		}
 		return indices
+	}
+	if count == 1 {
+		return []int{0}
 	}
 	indices := make([]int, count)
 	step := float64(total-1) / float64(count-1)

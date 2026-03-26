@@ -522,7 +522,7 @@ func detectLoginPage(body []byte) bool {
 	isHTML := strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype") ||
 		strings.Contains(lower, "<!doctype html") || strings.Contains(lower, "<head") ||
 		strings.Contains(lower, "<form") || strings.Contains(lower, "<body")
-	isJSON := (trimmed[0] == '{' || trimmed[0] == '[')
+	isJSON := len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[')
 
 	// ── JSON 响应: 仅检查强拒绝信号，不检查弱关键词 ──
 	if isJSON {
