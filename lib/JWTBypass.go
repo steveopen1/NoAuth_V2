@@ -26,12 +26,15 @@ func BuildJWTBypassCases(url, auth, originalToken string) []JWTBypassCase {
 		return cases
 	}
 
-	headerJSON, err := base64.RawURLEncoding.DecodeString(jwtParts[0])
+	var headerJSON []byte
+	var err error
+
+	headerJSON, err = base64.RawURLEncoding.DecodeString(jwtParts[0])
 	if err != nil {
-		headerJSON, _ = base64.StdEncoding.DecodeString(jwtParts[0])
-	}
-	if err != nil {
-		return cases
+		headerJSON, err = base64.StdEncoding.DecodeString(jwtParts[0])
+		if err != nil {
+			return cases
+		}
 	}
 
 	var header map[string]interface{}
@@ -163,9 +166,14 @@ func buildSignatureForgeryCasesJWT(url, auth, originalToken string, jwtParts []s
 }
 
 func forgeHS256Token(originalToken string, jwtParts []string) string {
-	headerJSON, _ := base64.RawURLEncoding.DecodeString(jwtParts[0])
+	headerJSON, err := base64.RawURLEncoding.DecodeString(jwtParts[0])
+	if err != nil {
+		return ""
+	}
 	var header map[string]interface{}
-	json.Unmarshal(headerJSON, &header)
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return ""
+	}
 
 	delete(header, "alg")
 	header["alg"] = "HS256"
@@ -181,9 +189,14 @@ func forgeHS256Token(originalToken string, jwtParts []string) string {
 }
 
 func convertRSAToHS256Token(originalToken string, jwtParts []string) string {
-	headerJSON, _ := base64.RawURLEncoding.DecodeString(jwtParts[0])
+	headerJSON, err := base64.RawURLEncoding.DecodeString(jwtParts[0])
+	if err != nil {
+		return ""
+	}
 	var header map[string]interface{}
-	json.Unmarshal(headerJSON, &header)
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return ""
+	}
 
 	alg, ok := header["alg"].(string)
 	if !ok {

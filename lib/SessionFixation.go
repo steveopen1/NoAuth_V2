@@ -56,37 +56,35 @@ func BuildSessionFixationCases(baseURL string) []SessionFixationCase {
 }
 
 func DetectSessionFixation(targetURL string) (bool, string) {
-	sessionIDs := []string{
-		"TEST123SESSION",
+	testCookies := []string{
+		"TEST_Session_ID",
 		"SESS_FIXATION_TEST",
-		"PHPSESSID=test",
-		"JSESSIONID=test",
-		"SESSION=test",
-		"SESSIONID=test",
-		"csrf_token=test",
+		"PHPSESSID=test123",
+		"JSESSIONID=test456",
+		"SESSION=test789",
+		"SESSIONID=testabc",
+		"csrf_token=testdef",
 	}
 
-	for _, sessionID := range sessionIDs {
+	for _, testCookie := range testCookies {
 		resp1, err := HttpClient.Get(targetURL)
 		if err != nil {
 			continue
 		}
-		resp1.Body.Close()
+		defer resp1.Body.Close()
 
 		cookies := extractSessionCookies(resp1)
 
 		if len(cookies) == 0 {
-			for _, cookieName := range sessionIDs {
-				parts := strings.Split(cookieName, "=")
-				if len(parts) == 2 {
-					cookies = append(cookies, &http.Cookie{Name: parts[0], Value: parts[1]})
-				}
+			parts := strings.Split(testCookie, "=")
+			if len(parts) == 2 {
+				cookies = append(cookies, &http.Cookie{Name: parts[0], Value: parts[1]})
 			}
 		}
 
 		canAccess := testSessionAccess(targetURL, cookies)
 		if canAccess {
-			return true, fmt.Sprintf("SessionFixation possible with cookie: %s", sessionID)
+			return true, fmt.Sprintf("SessionFixation possible with cookie: %s", testCookie)
 		}
 	}
 

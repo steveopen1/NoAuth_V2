@@ -251,8 +251,6 @@ func detectPKCEBypass(authorizationURL string) bool {
 	}
 	defer resp.Body.Close()
 
-	resp.Body.Close()
-
 	noChallengeURL := authorizationURL + "?response_type=code&client_id=test"
 
 	resp2, err := HttpClient.Get(noChallengeURL)
