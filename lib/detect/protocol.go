@@ -96,7 +96,6 @@ func IsCustomMethod(method string) bool {
 		"FOO": true, "BAR": true, "JEFF": true, "TEST": true,
 		"NULL": true, "PURGE": true, "REINDEX": true,
 		"LINK": true, "UNLINK": true, "BIND": true, "UNBIND": true,
-		"CONNECT": true, "OPTIONS": true, "TRACE": true,
 	}
 	return customMethods[strings.ToUpper(method)]
 }

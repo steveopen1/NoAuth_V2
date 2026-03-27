@@ -354,5 +354,5 @@ func ExportResultsToJSON(results interface{}, outputPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(outputPath, data, 0644)
+	return os.WriteFile(outputPath, data, 0o644)
 }

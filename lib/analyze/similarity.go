@@ -121,6 +121,9 @@ func SimHash(text []byte, hashBits int) uint64 {
 	if hashBits <= 0 {
 		hashBits = 64
 	}
+	if hashBits > 64 {
+		hashBits = 64
+	}
 
 	tokens := basicTokenize(string(text))
 	if len(tokens) == 0 {

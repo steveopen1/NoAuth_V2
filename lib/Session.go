@@ -47,7 +47,7 @@ func SaveSession(targetURL, noauth, auth string, phase string, hitPayloads []str
 		return err
 	}
 
-	return os.WriteFile(sessionPath, data, 0644)
+	return os.WriteFile(sessionPath, data, 0o644)
 }
 
 func LoadSession(targetURL string) (*ScanSession, error) {
@@ -127,7 +127,7 @@ func MarkPhaseComplete(targetURL, phase string, hitPayloads []string) error {
 		return err
 	}
 
-	return os.WriteFile(sessionPath, data, 0644)
+	return os.WriteFile(sessionPath, data, 0o644)
 }
 
 func GetSessionProgress(targetURL string) string {
@@ -159,7 +159,7 @@ func ExportSessionToJSON(targetURL string) (string, error) {
 		return "", err
 	}
 
-	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		return "", err
 	}
 

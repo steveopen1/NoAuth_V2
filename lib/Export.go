@@ -299,7 +299,7 @@ func ExportAllToJSON(targetURL string, sheets []SheetData) string {
 		return ""
 	}
 
-	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		fmt.Printf(Red("[-] 保存 JSON 文件失败: %s\n"), err)
 		return ""
 	}
@@ -378,7 +378,7 @@ func ExportSingleSheetToJSON(fileName string, sheet SheetData) string {
 		return ""
 	}
 
-	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		fmt.Printf(Red("[-] 保存 JSON 文件失败: %s\n"), err)
 		return ""
 	}

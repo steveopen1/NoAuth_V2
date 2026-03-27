@@ -256,7 +256,7 @@ func GenerateReport(meta ReportMeta, getSheet, postSheet, headerSheet SheetData)
 	sb.WriteString("*本报告由 NoAuth_V2 自动生成，结果仅供参考，请结合人工验证确认。*\n")
 
 	// 写入文件
-	if err := os.WriteFile(filePath, []byte(sb.String()), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(sb.String()), 0o644); err != nil {
 		fmt.Printf(Red("[-] 保存报告失败: %s\n"), err)
 		return
 	}

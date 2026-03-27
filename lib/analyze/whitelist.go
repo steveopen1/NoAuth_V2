@@ -105,20 +105,21 @@ func LoadWhitelistFromReader(r io.Reader) (*Whitelist, error) {
 
 func DefaultWhitelist() *Whitelist {
 	rules := []WhitelistRule{
-		{Pattern: ".*\\.css$", Description: "CSS files", MatchType: "contains"},
-		{Pattern: ".*\\.js$", Description: "JavaScript files", MatchType: "contains"},
-		{Pattern: ".*\\.png$", Description: "PNG images", MatchType: "contains"},
-		{Pattern: ".*\\.jpg$", Description: "JPEG images", MatchType: "contains"},
-		{Pattern: ".*\\.svg$", Description: "SVG images", MatchType: "contains"},
-		{Pattern: ".*\\.woff2?$", Description: "Font files", MatchType: "contains"},
-		{Pattern: "/favicon", Description: "Favicon requests", MatchType: "contains"},
-		{Pattern: "/robots\\.txt", Description: "Robots.txt", MatchType: "contains"},
-		{Pattern: "/sitemap\\.xml", Description: "Sitemap", MatchType: "contains"},
+		{Pattern: `\.css`, Description: "CSS files"},
+		{Pattern: `\.js`, Description: "JavaScript files"},
+		{Pattern: `\.png`, Description: "PNG images"},
+		{Pattern: `\.jpg`, Description: "JPEG images"},
+		{Pattern: `\.svg`, Description: "SVG images"},
+		{Pattern: `\.woff2?`, Description: "Font files"},
+		{Pattern: `favicon`, Description: "Favicon requests"},
+		{Pattern: `robots\.txt`, Description: "Robots.txt"},
+		{Pattern: `sitemap\.xml`, Description: "Sitemap"},
 	}
 
 	patterns := make([]*regexp.Regexp, 0, len(rules))
 	for _, rule := range rules {
-		re, _ := regexp.Compile(".*" + regexp.QuoteMeta(rule.Pattern) + ".*")
+		pattern := ".*" + regexp.QuoteMeta(rule.Pattern) + ".*"
+		re, _ := regexp.Compile(pattern)
 		patterns = append(patterns, re)
 	}
 

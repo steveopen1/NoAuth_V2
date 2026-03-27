@@ -137,10 +137,16 @@ func isNumeric(s string) bool {
 
 func parseIntSafe(s string) int {
 	n := 0
+	negative := false
 	for _, c := range s {
-		if c >= '0' && c <= '9' {
+		if c == '-' {
+			negative = true
+		} else if c >= '0' && c <= '9' {
 			n = n*10 + int(c-'0')
 		}
+	}
+	if negative {
+		return -n
 	}
 	return n
 }
