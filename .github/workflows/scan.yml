@@ -1,0 +1,106 @@
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: 'Target URL to scan'
+        required: true
+        type: string
+      noauth_path:
+        description: 'No-auth endpoint path'
+        required: true
+        type: string
+      auth_path:
+        description: 'Auth-required endpoint path'
+        required: true
+        type: string
+      threads:
+        description: 'Number of threads'
+        required: false
+        type: number
+        default: 10
+      timeout:
+        description: 'Request timeout in seconds'
+        required: false
+        type: number
+        default: 15
+      rate:
+        description: 'Rate limit per second'
+        required: false
+        type: number
+        default: 0
+
+outputs:
+  results_path:
+    description: 'Path to scan results'
+    value: ${{ jobs.scan.outputs.results_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Download dependencies
+      shell: bash
+      run: go mod tidy
+
+    - name: Build
+      shell: bash
+      run: go build -v -o noauth .
+
+    - name: Run scan
+      id: scan
+      shell: bash
+      env:
+        TARGET_URL: ${{ inputs.target_url }}
+        NOAUTH_PATH: ${{ inputs.noauth_path }}
+        AUTH_PATH: ${{ inputs.auth_path }}
+        THREADS: ${{ inputs.threads }}
+        TIMEOUT: ${{ inputs.timeout }}
+        RATE: ${{ inputs.rate }}
+      run: |
+        mkdir -p results
+        ./noauth \
+          -u "$TARGET_URL" \
+          -n "$NOAUTH_PATH" \
+          -a "$AUTH_PATH" \
+          -t $THREADS \
+          -timeout $TIMEOUT \
+          -rate $RATE \
+          -debug 1
+
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: scan-results-${{ inputs.target_url }}
+        path: |
+          results/
+          *.json
+          *.xlsx
+          *.md
+        retention-days: 30
+
+jobs:
+  scan:
+    name: Execute Scan
+    runs-on: ubuntu-latest
+    outputs:
+      results_path: ${{ steps.scan.outputs.results_path }}
+    steps:
+      - name: Run scan
+        uses: ./.github/workflows/scan
+        with:
+          target_url: ${{ inputs.target_url }}
+          noauth_path: ${{ inputs.noauth_path }}
+          auth_path: ${{ inputs.auth_path }}
+          threads: ${{ inputs.threads }}
+          timeout: ${{ inputs.timeout }}
+          rate: ${{ inputs.rate }}

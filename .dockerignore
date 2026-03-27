@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+*.md
+!README.md
+results/
+*.log
+*.tmp
+.env
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.noauth
