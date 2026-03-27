@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 type SpecializedBypassStartResult struct {
@@ -30,6 +31,7 @@ func SpecializedBypassStart(url, noauth, auth string, thread int, debug int, noa
 
 	url = strings.TrimSuffix(url, "/")
 
+	startTime := time.Now()
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
@@ -43,8 +45,9 @@ func SpecializedBypassStart(url, noauth, auth string, thread int, debug int, noa
 	}
 	origLen := len(body)
 	origCode := resp.StatusCode
+	responseTimeMs := time.Since(startTime).Milliseconds()
 
-	authMeta := ExtractResponseMeta(resp, body)
+	authMeta := ExtractResponseMeta(resp, body, responseTimeMs)
 	ctx := ClassifyContext{
 		Auth:           Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: authMeta},
 		NoAuth:         noauthBaseline,
@@ -152,7 +155,7 @@ func testJWTTampering(url, auth string, ctx ClassifyContext, thread, debug int) 
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			curlCmd := fmt.Sprintf("curl -k -v -H \"Authorization: Bearer %s\" \"%s\"", token, tc.url)
@@ -220,7 +223,7 @@ func testGraphQLBypass(url, auth string, ctx ClassifyContext, thread, debug int)
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()
@@ -283,7 +286,7 @@ func testOAuth2Bypass(url, auth string, ctx ClassifyContext, thread, debug int) 
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()
@@ -339,7 +342,7 @@ func testSAMLBypass(url, auth string, ctx ClassifyContext, thread, debug int) Sh
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()
@@ -394,7 +397,7 @@ func testGRPCBypass(url, auth string, ctx ClassifyContext, thread, debug int) Sh
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()
@@ -452,7 +455,7 @@ func testSessionFixation(url, auth string, ctx ClassifyContext, thread, debug in
 			newLen := len(respBody)
 			newCode := resp.StatusCode
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			mu.Lock()

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string) SheetData {
@@ -37,6 +38,7 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 
 	fmt.Printf(Blue("[+] 共生成 %d 个变异 payload\n"), len(variants))
 
+	startTime := time.Now()
 	resp, err := sendOriginalRequest(parsedReq)
 	if err != nil {
 		fmt.Printf(Red("[-] 发送原始请求失败: %s\n"), err)
@@ -52,10 +54,11 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 
 	origCode := resp.StatusCode
 	origLen := len(body)
+	responseTimeMs := time.Since(startTime).Milliseconds()
 
 	fmt.Printf(Green("[+] 原始请求响应: code=%d len=%d\n"), origCode, origLen)
 
-	origMeta := ExtractResponseMeta(resp, body)
+	origMeta := ExtractResponseMeta(resp, body, responseTimeMs)
 	baseline := Baseline{Code: origCode, Len: origLen, Body: sampleBody(body, 8192), Meta: origMeta}
 	ctx := ClassifyContext{
 		Auth:           baseline,
@@ -127,7 +130,7 @@ func RequestFuzzStart(reqFile string, thread int, debug int, targetIDs []string)
 			newCode := resp.StatusCode
 			newLen := len(respBody)
 
-			meta := ExtractResponseMeta(resp, respBody)
+			meta := ExtractResponseMeta(resp, respBody, 0)
 			classification := ClassifyResult(ctx, newCode, newLen, meta)
 
 			isDiff := newLen != origLen || newCode != origCode
@@ -230,7 +233,8 @@ func buildFuzzCurl(orig *ParsedRequest, variant *Variant, mutatedURL string, hea
 		if strings.ToLower(k) == "host" {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, v))
+		escapedV := strings.ReplaceAll(v, "\"", "\\\"")
+		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, escapedV))
 	}
 
 	if body != "" && body != orig.Body {

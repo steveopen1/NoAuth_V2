@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // 预编译的正则表达式，避免在热路径中重复编译
@@ -89,7 +90,7 @@ type ResponseMeta struct {
 }
 
 // ExtractResponseMeta 从 HTTP 响应中提取完整元数据
-func ExtractResponseMeta(resp *http.Response, body []byte) ResponseMeta {
+func ExtractResponseMeta(resp *http.Response, body []byte, responseTimeMs int64) ResponseMeta {
 	return ResponseMeta{
 		Body:                          sampleBody(body, 8192),
 		Location:                      resp.Header.Get("Location"),
@@ -114,6 +115,7 @@ func ExtractResponseMeta(resp *http.Response, body []byte) ResponseMeta {
 		XFrameOptions:                 resp.Header.Get("X-Frame-Options"),
 		XContentTypeOptions:           resp.Header.Get("X-Content-Type-Options"),
 		StrictTransportSecurity:       resp.Header.Get("Strict-Transport-Security"),
+		ResponseTimeMs:                responseTimeMs,
 	}
 }
 
@@ -136,6 +138,7 @@ func sampleBody(body []byte, maxLen int) []byte {
 
 // FetchBaseline 请求目标 URL 并构建 Baseline
 func FetchBaseline(targetURL string) (Baseline, error) {
+	startTime := time.Now()
 	resp, err := HttpClient.Get(targetURL)
 	if err != nil {
 		return Baseline{}, err
@@ -147,7 +150,8 @@ func FetchBaseline(targetURL string) (Baseline, error) {
 		return Baseline{Code: resp.StatusCode}, err
 	}
 
-	meta := ExtractResponseMeta(resp, body)
+	responseTimeMs := time.Since(startTime).Milliseconds()
+	meta := ExtractResponseMeta(resp, body, responseTimeMs)
 	return Baseline{
 		Code: resp.StatusCode,
 		Len:  len(body),

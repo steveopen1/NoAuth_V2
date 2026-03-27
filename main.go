@@ -144,7 +144,10 @@ func main() {
 			os.Exit(0)
 		}
 		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf(lib.Yellow("[!] 读取响应体失败: %s\n"), err)
+		}
 		lib.PrintFingerprintReport(u, resp, body)
 		os.Exit(0)
 	}

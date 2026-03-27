@@ -130,21 +130,23 @@ func generateURLParamVariants(req *ParsedRequest) []Variant {
 
 		if name == strings.ToLower(name) && i+1 < len(paramNames) {
 			nextName := paramNames[i+1]
-			nextValue := queryValues[nextName][0]
-			variants = append(variants, Variant{
-				Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", name, value, nextName, nextValue),
-				Type:       "url",
-				MutatedURL: buildPollutedURL(parsedURL, name, value, nextName, nextValue),
-			})
+			if nextValues, ok := queryValues[nextName]; ok && len(nextValues) > 0 {
+				nextValue := nextValues[0]
+				variants = append(variants, Variant{
+					Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", name, value, nextName, nextValue),
+					Type:       "url",
+					MutatedURL: buildPollutedURL(parsedURL, name, value, nextName, nextValue),
+				})
+			}
 		}
 
 		if strings.ToLower(name) != name {
 			lowerName := strings.ToLower(name)
-			if _, exists := queryValues[lowerName]; exists {
+			if lowerValues, exists := queryValues[lowerName]; exists && len(lowerValues) > 0 {
 				variants = append(variants, Variant{
-					Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", lowerName, queryValues[lowerName][0], name, value),
+					Name:       fmt.Sprintf("URLParamPollution[%s=%s&%s=%s]", lowerName, lowerValues[0], name, value),
 					Type:       "url",
-					MutatedURL: buildPollutedURL(parsedURL, lowerName, queryValues[lowerName][0], name, value),
+					MutatedURL: buildPollutedURL(parsedURL, lowerName, lowerValues[0], name, value),
 				})
 			}
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // postProbeCount POST 探针数量（用于检测 POST 是否与 GET 行为一致）
@@ -25,8 +26,10 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 	url = strings.TrimSuffix(url, "/")
 
+	startTimeForm := time.Now()
 	resp, err := HttpClient.Post(url+auth, "application/x-www-form-urlencoded", bytes.NewBuffer([]byte{}))
 	respjson, errjson := HttpClient.Post(url+auth, "application/json", bytes.NewBuffer([]byte("{}")))
+	startTimeJson := time.Now()
 
 	defer func() {
 		if resp != nil {
@@ -61,14 +64,16 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 
 	len1 := len(body)
 	origCode := resp.StatusCode
+	responseTimeForm := time.Since(startTimeForm).Milliseconds()
 	fmt.Printf(Green("[+] 原始鉴权接口(POST-Form) %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
 
 	lenjson := len(bodyjson)
 	origCodeJson := respjson.StatusCode
+	responseTimeJson := time.Since(startTimeJson).Milliseconds()
 	fmt.Printf(Green("[+] 原始鉴权接口(POST-Json) %s 的响应长度: len=%d code=%d\n"), url+auth, lenjson, origCodeJson)
 
-	authFormMeta := ExtractResponseMeta(resp, body)
-	authJsonMeta := ExtractResponseMeta(respjson, bodyjson)
+	authFormMeta := ExtractResponseMeta(resp, body, responseTimeForm)
+	authJsonMeta := ExtractResponseMeta(respjson, bodyjson, responseTimeJson)
 
 	// 构建双基线判定上下文（Form 和 Json 各自有独立的 Auth 基线）
 	ctxForm := ClassifyContext{
@@ -138,6 +143,9 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			current := atomic.AddInt64(&completed, 1)
 
 			if err != nil {
+				if resp != nil {
+					resp.Body.Close()
+				}
 				if respjson != nil {
 					respjson.Body.Close()
 				}
@@ -149,7 +157,12 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 				return
 			}
 			if errjson != nil {
-				resp.Body.Close()
+				if resp != nil {
+					resp.Body.Close()
+				}
+				if respjson != nil {
+					respjson.Body.Close()
+				}
 				if debug == 1 {
 					mu.Lock()
 					fmt.Printf(Yellow("[!] POST-Json 请求失败 [%d/%d] %s: %s\n"), current, total, url+value, errjson)
@@ -176,8 +189,8 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 			bodyjson = respjsonBody
 
 			// 提取响应元数据
-			formMeta := ExtractResponseMeta(resp, body)
-			jsonMeta := ExtractResponseMeta(respjson, bodyjson)
+			formMeta := ExtractResponseMeta(resp, body, 0)
+			jsonMeta := ExtractResponseMeta(respjson, bodyjson, 0)
 
 			if strings.Contains(formMeta.ContentType, "text/html") {
 				if strings.Contains(string(body), url+value) {

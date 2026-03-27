@@ -142,7 +142,10 @@ func buildSignatureForgeryCasesJWT(url, auth, originalToken string, jwtParts []s
 		return cases
 	}
 
-	alg := header["alg"].(string)
+	alg, ok := header["alg"].(string)
+	if !ok {
+		return cases
+	}
 
 	hs256Forgery := forgeHS256Token(originalToken, jwtParts)
 	if hs256Forgery != "" {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // bypassIPHeaders 用于 IP 伪造的请求头
@@ -221,6 +222,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 	url = strings.TrimSuffix(url, "/")
 
 	// 先获取原始响应作为基准
+	startTime := time.Now()
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
@@ -234,9 +236,10 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 	}
 	origLen := len(body)
 	origCode := resp.StatusCode
+	responseTimeMs := time.Since(startTime).Milliseconds()
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应: len=%d code=%d\n"), url+auth, origLen, origCode)
 
-	authMeta := ExtractResponseMeta(resp, body)
+	authMeta := ExtractResponseMeta(resp, body, responseTimeMs)
 
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
@@ -772,7 +775,7 @@ func HeaderBypassStart(url, noauth, auth string, thread int, debug int, noauthBa
 			}
 
 			// 提取响应元数据
-			meta := ExtractResponseMeta(resp, body)
+			meta := ExtractResponseMeta(resp, body, 0)
 
 			newLen := len(body)
 			newCode := resp.StatusCode
@@ -897,7 +900,7 @@ func buildIPSpoofCases(targetURL string, ctx ClassifyContext, thread, debug int)
 
 			if isHit {
 				hitIPs = append(hitIPs, ip)
-				ipMeta := ExtractResponseMeta(resp, body)
+				ipMeta := ExtractResponseMeta(resp, body, 0)
 				classification, color := ClassifyResultWithColor(ctx, newCode, newLen, ipMeta)
 
 				hitPrefix := Green
@@ -1083,7 +1086,8 @@ func buildCurlCommand(tc testCase) string {
 		parts = append(parts, fmt.Sprintf("-X %s", tc.method))
 	}
 	for k, v := range tc.headers {
-		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, v))
+		escapedV := strings.ReplaceAll(v, "\"", "\\\"")
+		parts = append(parts, fmt.Sprintf("-H \"%s: %s\"", k, escapedV))
 	}
 	parts = append(parts, fmt.Sprintf("\"%s\"", tc.url))
 	return strings.Join(parts, " ")

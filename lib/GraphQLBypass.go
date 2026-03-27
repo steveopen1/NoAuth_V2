@@ -364,7 +364,12 @@ func DetectGraphQL(url string) bool {
 		testUrl := testURL + endpoint
 		body := `{"query":"{ __typename }"}`
 
-		resp, err := HttpClient.Post(testUrl, "application/json", bytes.NewBufferString(body))
+		req, err := http.NewRequest("POST", testUrl, bytes.NewBufferString(body))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := DoWithRetry(req)
 		if err != nil {
 			continue
 		}
@@ -384,7 +389,12 @@ func DetectGraphQL(url string) bool {
 	altBody := `{"query":"{ __schema { queryType { name } } }"}`
 	for _, endpoint := range graphqlEndpoints {
 		testUrl := testURL + endpoint
-		resp, err := HttpClient.Post(testUrl, "application/json", bytes.NewBufferString(altBody))
+		req, err := http.NewRequest("POST", testUrl, bytes.NewBufferString(altBody))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := DoWithRetry(req)
 		if err != nil {
 			continue
 		}

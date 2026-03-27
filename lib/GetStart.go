@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Baseline) (SheetData, int, int, []string) {
@@ -21,6 +22,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	url = strings.TrimSuffix(url, "/")
 
+	startTime := time.Now()
 	resp, err := HttpClient.Get(url + auth)
 	if err != nil {
 		fmt.Printf(Red("[-] 请求原始鉴权接口失败: %s\n"), err)
@@ -36,9 +38,10 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 
 	len1 := len(body)
 	origCode := resp.StatusCode
+	responseTimeMs := time.Since(startTime).Milliseconds()
 	fmt.Printf(Green("[+] 原始鉴权接口 %s 的响应长度: len=%d code=%d\n"), url+auth, len1, origCode)
 
-	authMeta := ExtractResponseMeta(resp, body)
+	authMeta := ExtractResponseMeta(resp, body, responseTimeMs)
 
 	// 构建双基线判定上下文
 	ctx := ClassifyContext{
@@ -93,7 +96,7 @@ func GetStart(url, noauth, auth string, thread int, debug int, noauthBaseline Ba
 				return
 			}
 
-			meta := ExtractResponseMeta(resp, body)
+			meta := ExtractResponseMeta(resp, body, 0)
 
 			if strings.Contains(meta.ContentType, "text/html") {
 				if strings.Contains(string(body), url+value) {
