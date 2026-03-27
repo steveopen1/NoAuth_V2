@@ -390,10 +390,16 @@ func ExportSingleSheetToJSON(fileName string, sheet SheetData) string {
 // parseIntSafe 安全解析整数
 func parseIntSafe(s string) int {
 	var n int
+	negative := false
 	for _, c := range s {
-		if c >= '0' && c <= '9' {
+		if c == '-' {
+			negative = true
+		} else if c >= '0' && c <= '9' {
 			n = n*10 + int(c-'0')
 		}
+	}
+	if negative {
+		return -n
 	}
 	return n
 }

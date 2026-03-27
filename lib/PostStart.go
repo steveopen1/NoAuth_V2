@@ -50,9 +50,19 @@ func PostStart(url, noauth, auth string, thread int, debug int, noauthBaseline B
 		return result
 	}
 
+	if resp == nil || resp.Body == nil {
+		fmt.Printf(Red("[-] POST 响应无效\n"), err)
+		return result
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf(Red("[-] 读取响应体失败: %s\n"), err)
+		return result
+	}
+
+	if respjson == nil || respjson.Body == nil {
+		fmt.Printf(Red("[-] POST-Json 响应无效\n"), errjson)
 		return result
 	}
 
