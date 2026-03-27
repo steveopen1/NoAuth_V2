@@ -6,8 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+var sessionMu sync.Mutex
 
 type ScanSession struct {
 	TargetURL       string    `json:"target_url"`
@@ -78,6 +81,9 @@ func DeleteSession(targetURL string) error {
 }
 
 func MarkPhaseComplete(targetURL, phase string, hitPayloads []string) error {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+
 	session, err := LoadSession(targetURL)
 	if err != nil {
 		session = &ScanSession{
