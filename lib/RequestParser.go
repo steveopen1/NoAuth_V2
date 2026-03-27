@@ -8,16 +8,16 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"noauth/lib/burp"
+	"noauth/lib/har"
+	"noauth/lib/openapi"
+	"noauth/lib/postman"
+	"noauth/lib/types"
+	"noauth/lib/zap"
 )
 
-type ParsedRequest struct {
-	Method      string
-	URL         string
-	Headers     map[string]string
-	Body        string
-	ContentType string
-	Raw         string
-}
+type ParsedRequest = types.ParsedRequest
 
 func ParseRequest(filePath string) (*ParsedRequest, error) {
 	data, err := readFile(filePath)
@@ -30,6 +30,116 @@ func ParseRequest(filePath string) (*ParsedRequest, error) {
 		return parseCurlCommand(content)
 	}
 	return parseRawRequest(content)
+}
+
+func ParseFile(filePath string) ([]*ParsedRequest, error) {
+	ext := strings.ToLower(getFileExt(filePath))
+
+	switch ext {
+	case ".har":
+		return parseHarFile(filePath)
+	case ".xml":
+		if isBurpFile(filePath) {
+			return parseBurpFile(filePath)
+		}
+	case ".json":
+		if isZapFile(filePath) {
+			return parseZapFile(filePath)
+		}
+		if isPostmanFile(filePath) {
+			return parsePostmanFile(filePath)
+		}
+		if isOpenAPIFile(filePath) {
+			return parseOpenAPIFile(filePath)
+		}
+	}
+
+	data, err := readFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	content := strings.TrimSpace(string(data))
+	if strings.HasPrefix(content, "curl ") {
+		req, err := parseCurlCommand(content)
+		if err != nil {
+			return nil, err
+		}
+		return []*ParsedRequest{req}, nil
+	}
+
+	req, err := parseRawRequest(content)
+	if err != nil {
+		return nil, err
+	}
+	return []*ParsedRequest{req}, nil
+}
+
+func getFileExt(path string) string {
+	if idx := strings.LastIndex(path, "."); idx != -1 {
+		return path[idx:]
+	}
+	return ""
+}
+
+func isBurpFile(filePath string) bool {
+	data, _ := readFile(filePath)
+	return bytes.HasPrefix(data, []byte("<?xml")) && bytes.Contains(data, []byte("<items"))
+}
+
+func isZapFile(filePath string) bool {
+	data, _ := readFile(filePath)
+	return bytes.Contains(data, []byte(`"requests"`))
+}
+
+func isPostmanFile(filePath string) bool {
+	data, _ := readFile(filePath)
+	return bytes.Contains(data, []byte(`"collection"`)) || bytes.Contains(data, []byte(`"info"`)) && bytes.Contains(data, []byte(`"postman"`))
+}
+
+func isOpenAPIFile(filePath string) bool {
+	data, _ := readFile(filePath)
+	return bytes.Contains(data, []byte(`"openapi"`)) || bytes.Contains(data, []byte(`"swagger"`))
+}
+
+func parseHarFile(filePath string) ([]*types.ParsedRequest, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return har.ParseHAR(data)
+}
+
+func parseBurpFile(filePath string) ([]*types.ParsedRequest, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return burp.ParseBurp(data)
+}
+
+func parseZapFile(filePath string) ([]*types.ParsedRequest, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return zap.ParseZAP(data)
+}
+
+func parsePostmanFile(filePath string) ([]*types.ParsedRequest, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return postman.ParsePostman(data)
+}
+
+func parseOpenAPIFile(filePath string) ([]*types.ParsedRequest, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return openapi.ParseOpenAPISpec(data)
 }
 
 func readFile(path string) ([]byte, error) {
